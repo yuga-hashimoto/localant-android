@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">LocalAnt Android</string>
+    <string name="accessibility_service_description">Allows locally approved ChatGPT MCP actions to inspect and control Android UI.</string>
 </resources>

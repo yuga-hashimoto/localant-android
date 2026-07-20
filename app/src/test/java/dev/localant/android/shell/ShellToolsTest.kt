@@ -6,6 +6,7 @@ import dev.localant.android.core.tools.ToolRegistry
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
@@ -22,6 +23,9 @@ class ShellToolsTest {
 
         assertEquals(3, definition.risk.value)
         assertEquals("object", definition.inputSchema.getValue("type").jsonPrimitive.content)
+        assertTrue(
+            definition.inputSchema.getValue("properties").jsonObject.containsKey("_approvalId"),
+        )
     }
 
     @Test
