@@ -9,7 +9,10 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-class ToolHost(private val registry: ToolRegistry) {
+class ToolHost(
+    private val registry: ToolRegistry,
+    private val executor: ToolExecutor = registry,
+) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -47,7 +50,7 @@ class ToolHost(private val registry: ToolRegistry) {
                 message = "Tool input must be a JSON object.",
             )
 
-        return registry.execute(
+        return executor.execute(
             name = tool,
             input = input,
             context = ToolContext(sessionId = sessionId),

@@ -5,7 +5,7 @@ import dev.localant.android.core.model.ToolDefinition
 import dev.localant.android.core.model.ToolResult
 import kotlinx.serialization.json.JsonObject
 
-class ToolRegistry {
+class ToolRegistry : ToolExecutor {
 
     private val tools = mutableMapOf<String, Pair<ToolDefinition, ToolHandler>>()
 
@@ -16,13 +16,15 @@ class ToolRegistry {
         tools[definition.name] = definition to handler
     }
 
+    fun findDefinition(name: String): ToolDefinition? = tools[name]?.first
+
     fun listDefinitions(): List<ToolDefinition> =
         tools.values
             .map { it.first }
             .sortedBy { it.name }
             .toList()
 
-    suspend fun execute(
+    override suspend fun execute(
         name: String,
         input: JsonObject,
         context: ToolContext,
