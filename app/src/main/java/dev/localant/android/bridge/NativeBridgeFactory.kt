@@ -1,13 +1,15 @@
 package dev.localant.android.bridge
 
+import android.content.Context
 import dev.localant.android.BuildConfig
 
 object NativeBridgeFactory {
-    fun create(): NativeBridge {
+    fun create(context: Context): NativeBridge {
         if (!BuildConfig.NATIVE_TSNET_ENABLED) return FakeNativeBridge()
         return runCatching {
             val type = Class.forName("dev.localant.android.bridge.TsnetNativeBridge")
-            type.getDeclaredConstructor().newInstance() as NativeBridge
+            type.getDeclaredConstructor(Context::class.java)
+                .newInstance(context.applicationContext) as NativeBridge
         }.getOrElse { error ->
             ErrorNativeBridge("Native tsnet bridge is unavailable: ${error.message}")
         }

@@ -1,31 +1,58 @@
 # LocalAnt Android
 
-LocalAnt Android turns an Android phone into a self-hosted MCP endpoint for ChatGPT. The phone runs the MCP host, executes sandboxed shell commands, exposes approved Android UI automation tools, and publishes the endpoint through an embedded Tailscale Funnel connection.
+LocalAnt Android turns one Android phone into a self-hosted MCP endpoint for ChatGPT. The phone runs the MCP server, Tailscale Funnel, a sandboxed app-UID shell workspace, local approvals, audit storage, and Accessibility-based Android controls. No PC, VPS, or LocalAnt-operated relay is required at runtime.
 
-## Target experience
+## Capabilities
 
-1. Install and open the app.
-2. Complete the guided Android and Tailscale permissions.
-3. Start LocalAnt.
-4. Copy the generated `https://<device>.<tailnet>.ts.net/mcp?key=...` URL.
-5. Add the URL as a custom MCP app in ChatGPT.
-6. Approve device actions locally when required.
+- Embedded Tailscale `tsnet` node with HTTPS Funnel on port 443
+- Streamable HTTP MCP endpoint with token authentication and MCP sessions
+- Android status, current app, bounded UI tree, screenshot, tap, swipe, Back/Home, text input, and app launch tools
+- App-UID shell confined to `filesDir/workspace`, with timeout, output, concurrency, and command-policy limits
+- On-device approval UI and notifications for sensitive operations
+- Android Keystore-backed MCP token
+- Room-persisted approvals and redacted audit history
+- Protected-app and password-field blocking
 
-No PC, VPS, or LocalAnt-owned relay service is required during normal use. Tailscale Funnel supplies the public encrypted transport.
+## Build
 
-## MVP capabilities
+Ordinary development build, without the native Tailscale AAR:
 
-- MCP `initialize`, `tools/list`, and `tools/call` over Streamable HTTP-compatible JSON-RPC
-- Android status and capability inspection
-- Accessibility tree, screenshot, tap, swipe, text input, Back, and Home tools
-- Sandboxed `/system/bin/sh` execution inside the app UID
-- Device-side bearer/query-token authentication, risk classification, approval, and audit log
-- Foreground service with an immediate stop action
-- Embedded `tsnet.Server.ListenFunnel` bridge built with `gomobile`
+```bash
+JAVA_HOME=/opt/homebrew/opt/openjdk@17 \
+ANDROID_HOME="$HOME/Library/Android/sdk" \
+./gradlew lintDebug testDebugUnitTest assembleDebug
+```
 
-## Project status
+Native arm64 build with the embedded Tailscale Funnel bridge:
 
-Initial implementation in progress. See:
+```bash
+LOCALANT_BUILD_TSNET=1 \
+LOCALANT_NATIVE_TARGETS=android/arm64 \
+JAVA_HOME=/opt/homebrew/opt/openjdk@17 \
+ANDROID_HOME="$HOME/Library/Android/sdk" \
+ANDROID_NDK_HOME="$HOME/Library/Android/sdk/ndk/28.2.13676358" \
+./gradlew clean lintDebug testDebugUnitTest assembleDebug
+```
 
-- `docs/superpowers/specs/2026-07-21-localant-android-design.md`
-- `docs/superpowers/plans/2026-07-21-localant-android-mvp.md`
+The generated AAR is intentionally not committed. `scripts/build-native.sh` rebuilds it from the pinned Go module and gomobile tool versions.
+
+## Use
+
+1. Install the native APK on an arm64 Android 11+ device.
+2. Enable **LocalAnt Android** in Android Accessibility settings.
+3. Exclude the app from aggressive battery restrictions.
+4. Tap **Start LocalAnt**.
+5. Open the displayed Tailscale sign-in URL and authorize the embedded node.
+6. Copy the MCP URL after Funnel becomes ready.
+7. Add the URL as a custom connector in ChatGPT developer mode.
+8. Approve sensitive operations on the phone when prompted.
+
+See [Setup](docs/setup.md), [Security](docs/security.md), [Native build](docs/native-build.md), and [MCP examples](docs/mcp-examples.md).
+
+## Scope
+
+The MVP intentionally excludes root, Shizuku, app installation/removal, notification access, microphone, camera, location, interactive PTY, boot auto-start, and risk-4 operations.
+
+## License
+
+A license has not yet been selected. Do not redistribute this repository as an independently licensed package until one is added.

@@ -20,6 +20,14 @@ data class HostState(
     val pendingApprovals: Int = 0,
 )
 
+fun HostState.safeNotificationText(): String = when (phase) {
+    HostPhase.STOPPED -> "LocalAnt is stopped."
+    HostPhase.STARTING -> "Starting Tailscale Funnel…"
+    HostPhase.AUTH_REQUIRED -> "Tailscale sign-in is required."
+    HostPhase.RUNNING -> "MCP endpoint is running."
+    HostPhase.ERROR -> message ?: "LocalAnt encountered an error."
+}
+
 class HostStateStore(initial: HostState = HostState()) {
     private val mutableState = MutableStateFlow(initial)
     val state: StateFlow<HostState> = mutableState.asStateFlow()

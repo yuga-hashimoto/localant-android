@@ -6,6 +6,9 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+val buildTsnetBridge = providers.environmentVariable("LOCALANT_BUILD_TSNET").orNull == "1"
+val nativeBridgeAar = layout.projectDirectory.file("libs/localant-native.aar").asFile
+
 android {
     namespace = "dev.localant.android"
     compileSdk = 36
@@ -18,7 +21,7 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("boolean", "NATIVE_TSNET_ENABLED", "false")
+        buildConfigField("boolean", "NATIVE_TSNET_ENABLED", buildTsnetBridge.toString())
     }
 
     buildTypes {
@@ -44,6 +47,27 @@ android {
         compose = true
         buildConfig = true
     }
+
+    sourceSets {
+        getByName("main") {
+            if (buildTsnetBridge) {
+                java.srcDir("src/native/java")
+            }
+        }
+    }
+}
+
+val buildNativeBridge by tasks.registering(Exec::class) {
+    group = "build"
+    description = "Build the gomobile Tailscale Funnel AAR."
+    workingDir(rootProject.projectDir)
+    commandLine("bash", "scripts/build-native.sh")
+}
+
+if (buildTsnetBridge) {
+    tasks.named("preBuild").configure {
+        dependsOn(buildNativeBridge)
+    }
 }
 
 dependencies {
@@ -64,6 +88,10 @@ dependencies {
     implementation("androidx.room:room-runtime:2.7.2")
     implementation("androidx.room:room-ktx:2.7.2")
     kapt("androidx.room:room-compiler:2.7.2")
+
+    if (buildTsnetBridge) {
+        implementation(files(nativeBridgeAar))
+    }
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("androidx.test.ext:junit:1.2.1")

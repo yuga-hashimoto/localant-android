@@ -1,13 +1,18 @@
-name: Android CI
+name: CI
 
 on:
   push:
-    branches: ["main", "mvp"]
+    branches: ["main"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  build:
+  android:
+    name: Android JVM and debug APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,15 +22,84 @@ jobs:
         with:
           java-version: "17"
           distribution: "temurin"
+          cache: gradle
 
-      - name: Setup Android SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Run unit tests
-        run: ./gradlew testDebugUnitTest
+      - name: Verify Android project
+        run: |
+          chmod +x gradlew
+          ./gradlew lintDebug testDebugUnitTest compileDebugAndroidTestSources assembleDebug --no-daemon
 
-      - name: Assemble debug
-        run: ./gradlew assembleDebug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: localant-android-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  go:
+    name: Go MCP and tsnet tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: native/go.sum
+
+      - name: Test and vet native bridge
+        working-directory: native
+        run: |
+          go test -race ./...
+          go vet ./...
+
+  native-android:
+    name: Native tsnet arm64 APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: gradle
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: native/go.sum
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform and NDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
+
+      - name: Build native arm64 APK
+        env:
+          LOCALANT_BUILD_TSNET: "1"
+          LOCALANT_NATIVE_TARGETS: android/arm64
+        run: |
+          chmod +x gradlew scripts/build-native.sh
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          ./gradlew clean lintDebug testDebugUnitTest compileDebugAndroidTestSources assembleDebug --no-daemon
+
+      - name: Confirm Go JNI library is packaged
+        run: unzip -l app/build/outputs/apk/debug/app-debug.apk | grep 'lib/arm64-v8a/libgojni.so'
+
+      - name: Upload native debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: localant-android-native-arm64-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

@@ -94,7 +94,7 @@ class LocalAntHostService : Service() {
                 audit = appServices.audit,
             )
             val host = ToolHost(registry, secureExecutor)
-            val nativeBridge = NativeBridgeFactory.create()
+            val nativeBridge = NativeBridgeFactory.create(applicationContext)
             shell = shellEngine
             bridge = nativeBridge
             nativeBridge.start(
@@ -107,33 +107,7 @@ class LocalAntHostService : Service() {
             )
 
             val pending = appServices.approvals.listPending().size
-            val next = when (nativeBridge.status()) {
-                BridgeState.RUNNING -> HostState(
-                    phase = HostPhase.RUNNING,
-                    publicUrl = nativeBridge.publicUrl(),
-                    message = if (nativeBridge.publicUrl()?.startsWith("http://127.0.0.1") == true) {
-                        "Development bridge is running. Build the native tsnet bridge for a public URL."
-                    } else {
-                        "This phone is available to ChatGPT through MCP."
-                    },
-                    pendingApprovals = pending,
-                )
-                BridgeState.STARTING -> HostState(HostPhase.STARTING, message = "Starting Tailscale Funnel…")
-                BridgeState.ERROR -> HostState(
-                    HostPhase.ERROR,
-                    message = nativeBridge.lastError() ?: "Native bridge failed to start.",
-                    pendingApprovals = pending,
-                )
-                BridgeState.STOPPED -> nativeBridge.authUrl()?.let { url ->
-                    HostState(
-                        HostPhase.AUTH_REQUIRED,
-                        authUrl = url,
-                        message = "Sign in to Tailscale to publish the MCP URL.",
-                        pendingApprovals = pending,
-                    )
-                } ?: HostState(HostPhase.ERROR, message = "Bridge stopped before publishing an MCP endpoint.")
-            }
-            publish(next)
+            publish(hostStateForBridge(nativeBridge, pending))
             startApprovalMonitor(appServices)
         } catch (error: Exception) {
             publish(
@@ -165,8 +139,10 @@ class LocalAntHostService : Service() {
                 appServices.approvals.expireStale(System.currentTimeMillis())
                 val pending = appServices.approvals.listPending().size
                 val current = HostStateStore.shared.state.value
-                if (current.phase != HostPhase.STOPPED && current.pendingApprovals != pending) {
-                    publish(current.copy(pendingApprovals = pending))
+                val next = bridge?.let { hostStateForBridge(it, pending) }
+                    ?: current.copy(pendingApprovals = pending)
+                if (current.phase != HostPhase.STOPPED && next != current) {
+                    publish(next)
                 }
                 if (pending > 0 && pending != lastApprovalCount) {
                     getSystemService(NotificationManager::class.java).notify(
@@ -182,6 +158,48 @@ class LocalAntHostService : Service() {
         }
     }
 
+    private fun hostStateForBridge(nativeBridge: NativeBridge, pendingApprovals: Int): HostState {
+        nativeBridge.authUrl()?.let { authUrl ->
+            return HostState(
+                phase = HostPhase.AUTH_REQUIRED,
+                authUrl = authUrl,
+                message = "Sign in to Tailscale to publish the MCP URL.",
+                pendingApprovals = pendingApprovals,
+            )
+        }
+
+        return when (nativeBridge.status()) {
+            BridgeState.RUNNING -> {
+                val publicUrl = nativeBridge.publicUrl()
+                HostState(
+                    phase = HostPhase.RUNNING,
+                    publicUrl = publicUrl,
+                    message = if (publicUrl?.startsWith("http://127.0.0.1") == true) {
+                        "Development bridge is running. Build the native tsnet bridge for a public URL."
+                    } else {
+                        "This phone is available to ChatGPT through MCP."
+                    },
+                    pendingApprovals = pendingApprovals,
+                )
+            }
+            BridgeState.STARTING -> HostState(
+                phase = HostPhase.STARTING,
+                message = "Starting Tailscale Funnel…",
+                pendingApprovals = pendingApprovals,
+            )
+            BridgeState.ERROR -> HostState(
+                phase = HostPhase.ERROR,
+                message = nativeBridge.lastError() ?: "Native bridge failed to start.",
+                pendingApprovals = pendingApprovals,
+            )
+            BridgeState.STOPPED -> HostState(
+                phase = HostPhase.ERROR,
+                message = nativeBridge.lastError() ?: "Bridge stopped before publishing an MCP endpoint.",
+                pendingApprovals = pendingApprovals,
+            )
+        }
+    }
+
     private fun publish(state: HostState) {
         HostStateStore.shared.update(state)
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(state))
@@ -190,7 +208,7 @@ class LocalAntHostService : Service() {
     private fun notification(state: HostState) = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.stat_sys_upload_done)
         .setContentTitle("LocalAnt Android")
-        .setContentText(state.publicUrl ?: state.message ?: state.phase.name)
+        .setContentText(state.safeNotificationText())
         .setOngoing(state.phase != HostPhase.STOPPED && state.phase != HostPhase.ERROR)
         .setOnlyAlertOnce(true)
         .setContentIntent(activityPendingIntent())

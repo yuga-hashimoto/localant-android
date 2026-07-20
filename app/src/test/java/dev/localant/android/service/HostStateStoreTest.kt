@@ -21,6 +21,18 @@ class HostStateStoreTest {
     }
 
     @Test
+    fun notificationText_neverIncludesPublicUrlOrToken() {
+        val state = HostState(
+            phase = HostPhase.RUNNING,
+            publicUrl = "https://phone.ts.net/mcp?key=secret-token",
+        )
+
+        val text = state.safeNotificationText()
+
+        assertEquals("MCP endpoint is running.", text)
+    }
+
+    @Test
     fun stopped_clearsTransientConnectionFields() {
         val store = HostStateStore()
         store.update(

@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.localant.android.accessibility.AccessibilityServiceStatus
 import dev.localant.android.accessibility.LocalAntAccessibilityService
 import dev.localant.android.approval.PendingApproval
 import dev.localant.android.runtime.LocalAntAppServices
@@ -43,7 +44,9 @@ class LocalAntViewModel(application: Application) : AndroidViewModel(application
     }
 
     private suspend fun refreshNow() {
-        mutableAccessibilityConnected.value = LocalAntAccessibilityService.current() != null
+        mutableAccessibilityConnected.value =
+            LocalAntAccessibilityService.current() != null ||
+                AccessibilityServiceStatus.isEnabled(getApplication())
         mutableApprovals.value = withContext(Dispatchers.IO) {
             services.approvals.expireStale(System.currentTimeMillis())
             services.approvals.listPending()
