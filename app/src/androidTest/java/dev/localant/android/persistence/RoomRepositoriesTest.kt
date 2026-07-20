@@ -41,6 +41,8 @@ class RoomRepositoriesTest {
 
         assertNull(repository.consume(pending.id))
         assertTrue(repository.approve(pending.id, sessionGrant = true))
+        assertTrue(repository.listPending().isEmpty())
+        assertEquals(pending, repository.find(pending.id))
         assertTrue(repository.getSessionGrants("s1", "device_tap"))
         assertFalse(repository.getSessionGrants("s1", "device_swipe"))
         assertNotNull(repository.consume(pending.id))

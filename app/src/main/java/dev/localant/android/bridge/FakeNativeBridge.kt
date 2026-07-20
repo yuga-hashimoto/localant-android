@@ -36,6 +36,8 @@ class FakeNativeBridge : NativeBridge {
 
     override fun status(): BridgeState = currentState
 
+    override fun publicUrl(): String? = currentUrl.takeIf { it.isNotBlank() }
+
     fun devUrl(): String = currentUrl
 
     internal suspend fun executeForTest(

@@ -35,6 +35,8 @@ class InMemoryApprovalRepository(
         return approval
     }
 
+    override fun find(id: String): PendingApproval? = pendingApprovals[id]
+
     override fun approve(id: String, sessionGrant: Boolean): Boolean {
         val pending = pendingApprovals[id] ?: return false
         if (clock.nowMs() >= pending.expiresAtMs) return false
@@ -76,7 +78,7 @@ class InMemoryApprovalRepository(
     }
 
     override fun listPending(): List<PendingApproval> =
-        pendingApprovals.values.toList()
+        pendingApprovals.values.filterNot { approvedIds.containsKey(it.id) }
 
     companion object {
         const val TTL_MS = 60_000L

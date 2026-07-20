@@ -22,8 +22,8 @@ interface ApprovalDao {
     @Query("DELETE FROM approvals WHERE expiresAtMs <= :nowMs")
     fun deleteExpired(nowMs: Long): Int
 
-    @Query("SELECT * FROM approvals ORDER BY expiresAtMs ASC")
-    fun listApprovals(): List<ApprovalEntity>
+    @Query("SELECT * FROM approvals WHERE approved = 0 ORDER BY expiresAtMs ASC")
+    fun listPendingApprovals(): List<ApprovalEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertSessionGrant(entity: SessionGrantEntity)

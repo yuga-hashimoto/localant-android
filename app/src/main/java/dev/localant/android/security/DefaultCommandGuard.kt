@@ -205,7 +205,7 @@ class DefaultCommandGuard(
                 if (part.isEmpty()) continue
                 when (part) {
                     "." -> {}
-                    ".." -> if (parts.isNotEmpty()) parts.removeLast()
+                    ".." -> if (parts.isNotEmpty()) parts.removeAt(parts.lastIndex)
                     else -> parts.add(part)
                 }
             }

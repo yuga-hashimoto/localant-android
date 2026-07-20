@@ -31,7 +31,7 @@ class SecureToolExecutor(
         val cleanInput = JsonObject(input.filterKeys { it != APPROVAL_ID_FIELD })
 
         val approvalResult = if (approvalId != null) {
-            val pending = approvals.listPending().firstOrNull { it.id == approvalId }
+            val pending = approvals.find(approvalId)
             if (pending == null || pending.toolName != name || pending.sessionId != context.sessionId) {
                 return auditedFailure(
                     definition.risk.value,

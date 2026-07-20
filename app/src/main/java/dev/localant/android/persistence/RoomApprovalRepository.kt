@@ -39,6 +39,8 @@ class RoomApprovalRepository(
         return entity.toDomain()
     }
 
+    override fun find(id: String): PendingApproval? = dao.findApproval(id)?.toDomain()
+
     override fun approve(id: String, sessionGrant: Boolean): Boolean {
         var approved = false
         database.runInTransaction {
@@ -87,5 +89,5 @@ class RoomApprovalRepository(
     }
 
     override fun listPending(): List<PendingApproval> =
-        dao.listApprovals().map { it.toDomain() }
+        dao.listPendingApprovals().map { it.toDomain() }
 }

@@ -14,6 +14,7 @@ interface ApprovalRepository {
         inputSummary: String,
     ): PendingApproval
 
+    fun find(id: String): PendingApproval?
     fun approve(id: String, sessionGrant: Boolean): Boolean
     fun deny(id: String): Boolean
     fun consume(id: String): PendingApproval?

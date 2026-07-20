@@ -33,9 +33,11 @@ class ApprovalRepositoryTest {
     }
 
     @Test
-    fun approve_validId_returnsTrue() {
+    fun approve_validId_returnsTrueAndHidesFromPendingUi() {
         val pending = repository.request("tool", RiskLevel(1), "s1", "x")
         assertTrue(repository.approve(pending.id, sessionGrant = false))
+        assertTrue(repository.listPending().isEmpty())
+        assertEquals(pending, repository.find(pending.id))
     }
 
     @Test
