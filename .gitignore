@@ -1,1 +1,10 @@
-.gradle/\n.idea/\nlocal.properties\n**/build/\n*.iml\n.DS_Store\n.kotlin/\n/native/build/\n/native/localantbridge.aar\n.worktrees/
+.gradle/
+.idea/
+local.properties
+**/build/
+*.iml
+.DS_Store
+.kotlin/
+native/build/
+native/localantbridge.aar
+.worktrees/
