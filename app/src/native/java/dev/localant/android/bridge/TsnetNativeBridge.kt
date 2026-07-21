@@ -2,6 +2,7 @@ package dev.localant.android.bridge
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.util.Log
 import dev.localant.android.core.tools.ToolHost
 import dev.localant.nativebridge.nativebridge.Bridge
 import dev.localant.nativebridge.nativebridge.Host
@@ -31,8 +32,8 @@ class TsnetNativeBridge(context: Context) : NativeBridge {
     @Volatile
     private var startupError: String? = null
 
-    private var config: NativeBridgeConfig? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var lastNetworkSnapshot: AndroidNetworkSnapshot? = null
 
     override suspend fun start(config: NativeBridgeConfig, host: ToolHost) = mutex.withLock {
         if (nativeBridge != null) return@withLock
@@ -54,16 +55,15 @@ class TsnetNativeBridge(context: Context) : NativeBridge {
         val bridge = Nativebridge.newBridge(callback)
         hostCallback = callback
         nativeBridge = bridge
-        this.config = config
         startupError = null
 
         try {
-            updateNativeNetworkState(bridge)
+            updateNativeNetworkState(bridge, force = true)
             withContext(Dispatchers.IO) {
                 bridge.start(config.stateDir, config.hostname, config.accessToken)
             }
             networkCallback = networkStateProvider.registerDefaultNetworkCallback {
-                scope.launch { refreshNetworkAndReconnectIfNeeded() }
+                scope.launch { refreshNetworkState() }
             }
         } catch (error: Exception) {
             startupError = error.message ?: "The native tsnet bridge failed to start."
@@ -71,7 +71,7 @@ class TsnetNativeBridge(context: Context) : NativeBridge {
             networkCallback = null
             nativeBridge = null
             hostCallback = null
-            this.config = null
+            lastNetworkSnapshot = null
             throw error
         }
     }
@@ -82,7 +82,7 @@ class TsnetNativeBridge(context: Context) : NativeBridge {
         val bridge = nativeBridge
         nativeBridge = null
         hostCallback = null
-        config = null
+        lastNetworkSnapshot = null
         startupError = null
         if (bridge != null) {
             withContext(Dispatchers.IO) { bridge.stop() }
@@ -112,31 +112,28 @@ class TsnetNativeBridge(context: Context) : NativeBridge {
     override fun lastError(): String? = startupError
         ?: nativeBridge?.lastError()?.takeIf { it.isNotBlank() }
 
-    private fun updateNativeNetworkState(bridge: Bridge) {
+    private fun updateNativeNetworkState(bridge: Bridge, force: Boolean = false) {
         val state = networkStateProvider.snapshot()
+        if (!force && state == lastNetworkSnapshot) return
+
         bridge.updateNetworkState(
             state.interfacesJson,
             state.defaultInterface,
             state.gateway,
         )
+        lastNetworkSnapshot = state
     }
 
-    private suspend fun refreshNetworkAndReconnectIfNeeded() = mutex.withLock {
+    private suspend fun refreshNetworkState() = mutex.withLock {
         val bridge = nativeBridge ?: return@withLock
-        val savedConfig = config ?: return@withLock
         runCatching { updateNativeNetworkState(bridge) }
             .onFailure { error ->
-                startupError = "Could not refresh Android network state: ${error.message}"
-                return@withLock
+                Log.w(
+                    "LocalAntTsnet",
+                    "Could not refresh Android network state; keeping the current Funnel alive.",
+                    error,
+                )
             }
-
-        val currentStatus = bridge.status()
-        if (currentStatus == "RUNNING" || currentStatus == "ERROR") {
-            withContext(Dispatchers.IO) {
-                bridge.stop()
-                bridge.start(savedConfig.stateDir, savedConfig.hostname, savedConfig.accessToken)
-            }
-        }
     }
 
 }

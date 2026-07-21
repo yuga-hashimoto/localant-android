@@ -61,10 +61,10 @@ internal class AndroidNetworkStateProvider(context: Context) {
                             ip = hostAddress,
                             prefixLen = address.networkPrefixLength.toInt(),
                         )
-                    },
+                    }.sortedWith(compareBy(AndroidNetworkAddress::ip, AndroidNetworkAddress::prefixLen)),
                 )
             }.getOrNull()
-        }
+        }.sortedWith(compareBy(AndroidNetworkInterface::name, AndroidNetworkInterface::index))
 
         val activeNetwork = connectivityManager?.activeNetwork
         val linkProperties = activeNetwork?.let(connectivityManager::getLinkProperties)

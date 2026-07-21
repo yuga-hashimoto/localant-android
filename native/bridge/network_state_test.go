@@ -58,3 +58,55 @@ func TestUpdateNetworkStateRegistersAlternateInterfaceGetter(t *testing.T) {
 		t.Fatal("network state should be configured")
 	}
 }
+
+func TestUpdateNetworkStateInjectsChangeWithoutRestartingBridge(t *testing.T) {
+	bridge := NewBridge(&fakeHost{})
+	changeEvents := 0
+	bridge.mu.Lock()
+	bridge.status = statusRunning
+	bridge.networkChangeHook = func() {
+		changeEvents++
+	}
+	bridge.mu.Unlock()
+
+	err := bridge.UpdateNetworkState(
+		`[{"name":"wlan0","index":7,"mtu":1500,"up":true,"addrs":[{"ip":"192.0.2.20","prefixLen":24}]}]`,
+		"wlan0",
+		"192.0.2.1",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changeEvents != 1 {
+		t.Fatalf("network change events=%d, want 1", changeEvents)
+	}
+	if bridge.Status() != statusRunning {
+		t.Fatalf("status=%q, want %q", bridge.Status(), statusRunning)
+	}
+}
+
+func TestUpdateNetworkStateDoesNotInjectDuringStartup(t *testing.T) {
+	bridge := NewBridge(&fakeHost{})
+	changeEvents := 0
+	bridge.mu.Lock()
+	bridge.status = statusStarting
+	bridge.networkChangeHook = func() {
+		changeEvents++
+	}
+	bridge.mu.Unlock()
+
+	err := bridge.UpdateNetworkState(
+		`[{"name":"wlan0","index":7,"mtu":1500,"up":true,"addrs":[{"ip":"192.0.2.21","prefixLen":24}]}]`,
+		"wlan0",
+		"192.0.2.1",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changeEvents != 0 {
+		t.Fatalf("network change events=%d, want 0", changeEvents)
+	}
+	if bridge.Status() != statusStarting {
+		t.Fatalf("status=%q, want %q", bridge.Status(), statusStarting)
+	}
+}

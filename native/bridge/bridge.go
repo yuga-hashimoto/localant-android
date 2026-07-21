@@ -43,6 +43,10 @@ type Bridge struct {
 	listener   net.Listener
 	httpServer *http.Server
 	cancel     context.CancelFunc
+
+	// networkChangeHook is used by tests. In production, network changes are
+	// injected into tsnet's live netmon monitor through server.Sys().NetMon.
+	networkChangeHook func()
 }
 
 // NewBridge creates a stopped bridge bound to a Kotlin Host callback.

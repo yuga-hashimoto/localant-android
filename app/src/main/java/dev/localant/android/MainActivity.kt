@@ -40,6 +40,7 @@ import dev.localant.android.approval.PendingApproval
 import dev.localant.android.service.HostPhase
 import dev.localant.android.service.HostState
 import dev.localant.android.ui.LocalAntViewModel
+import dev.localant.android.ui.redactMcpUrl
 
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<LocalAntViewModel>()
@@ -184,7 +185,7 @@ private fun LocalAntDashboard(
             SetupCard(
                 number = "5",
                 title = "Add the MCP URL to ChatGPT",
-                description = url,
+                description = redactMcpUrl(url),
             ) {
                 Button(
                     onClick = {

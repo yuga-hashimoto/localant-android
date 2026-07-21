@@ -18,6 +18,8 @@ var androidNetworkState struct {
 	configured bool
 }
 
+var registerAndroidInterfaceGetter sync.Once
+
 type androidAddressJSON struct {
 	IP        string `json:"ip"`
 	PrefixLen int    `json:"prefixLen"`
@@ -48,13 +50,39 @@ func (b *Bridge) UpdateNetworkState(interfacesJSON, defaultInterface, gateway st
 	androidNetworkState.configured = true
 	androidNetworkState.Unlock()
 
-	netmon.RegisterInterfaceGetter(func() ([]netmon.Interface, error) {
-		androidNetworkState.RLock()
-		defer androidNetworkState.RUnlock()
-		return cloneInterfaces(androidNetworkState.interfaces), nil
+	registerAndroidInterfaceGetter.Do(func() {
+		netmon.RegisterInterfaceGetter(func() ([]netmon.Interface, error) {
+			androidNetworkState.RLock()
+			defer androidNetworkState.RUnlock()
+			return cloneInterfaces(androidNetworkState.interfaces), nil
+		})
 	})
 	updatePlatformNetworkState(defaultInterface, gateway)
+	b.injectNetworkChange()
 	return nil
+}
+
+func (b *Bridge) injectNetworkChange() {
+	b.mu.RLock()
+	hook := b.networkChangeHook
+	server := b.server
+	status := b.status
+	b.mu.RUnlock()
+
+	if status != statusRunning {
+		return
+	}
+	if hook != nil {
+		hook()
+		return
+	}
+	if server == nil {
+		return
+	}
+	monitor, ok := server.Sys().NetMon.GetOK()
+	if ok && monitor != nil {
+		monitor.InjectEvent()
+	}
 }
 
 func androidNetworkConfigured() bool {
