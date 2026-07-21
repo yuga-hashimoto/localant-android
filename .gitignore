@@ -9,6 +9,7 @@ native/build/
 native/localantbridge.aar
 app/libs/*
 .tools/
+.generated/
 .worktrees/
 dist/
 *.jks

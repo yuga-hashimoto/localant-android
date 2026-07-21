@@ -1,0 +1,84 @@
+diff --git a/ipn/localapi/disabled_stubs.go b/ipn/localapi/disabled_stubs.go
+index 4e82400..38928d8 100644
+--- a/ipn/localapi/disabled_stubs.go
++++ b/ipn/localapi/disabled_stubs.go
+@@ -1,7 +1,7 @@
+ // Copyright (c) Tailscale Inc & contributors
+ // SPDX-License-Identifier: BSD-3-Clause
+ 
+-//go:build ios || android || js
++//go:build ios || js
+ 
+ package localapi
+ 
+diff --git a/ipn/localapi/cert_android.go b/ipn/localapi/cert_android.go
+new file mode 100644
+index 0000000..fa03db8
+--- /dev/null
++++ b/ipn/localapi/cert_android.go
+@@ -0,0 +1,65 @@
++// Copyright (c) Tailscale Inc & contributors
++// SPDX-License-Identifier: BSD-3-Clause
++
++//go:build android && !ts_omit_acme
++
++package localapi
++
++import (
++	"fmt"
++	"net/http"
++	"strings"
++	"time"
++
++	"tailscale.com/ipn/ipnlocal"
++)
++
++// Tailscale disables the certificate LocalAPI on Android, even though the
++// LocalBackend ACME implementation itself supports Android. Embedded tsnet
++// uses this LocalAPI from GetCertificate, so LocalAnt restores the same
++// certificate handler used on desktop platforms for its private build copy.
++func init() {
++	Register("cert/", (*Handler).serveCert)
++}
++
++func (h *Handler) serveCert(w http.ResponseWriter, r *http.Request) {
++	if !h.PermitWrite && !h.PermitCert {
++		http.Error(w, "cert access denied", http.StatusForbidden)
++		return
++	}
++	domain, ok := strings.CutPrefix(r.URL.Path, "/localapi/v0/cert/")
++	if !ok {
++		http.Error(w, "internal handler config wired wrong", http.StatusInternalServerError)
++		return
++	}
++	var minValidity time.Duration
++	if minValidityStr := r.URL.Query().Get("min_validity"); minValidityStr != "" {
++		var err error
++		minValidity, err = time.ParseDuration(minValidityStr)
++		if err != nil {
++			http.Error(w, fmt.Sprintf("invalid validity parameter: %v", err), http.StatusBadRequest)
++			return
++		}
++	}
++	pair, err := h.b.GetCertPEMWithValidity(r.Context(), domain, minValidity)
++	if err != nil {
++		http.Error(w, fmt.Sprint(err), http.StatusInternalServerError)
++		return
++	}
++	serveAndroidKeyPair(w, r, pair)
++}
++
++func serveAndroidKeyPair(w http.ResponseWriter, r *http.Request, pair *ipnlocal.TLSCertKeyPair) {
++	w.Header().Set("Content-Type", "text/plain")
++	switch r.URL.Query().Get("type") {
++	case "", "crt", "cert":
++		_, _ = w.Write(pair.CertPEM)
++	case "key":
++		_, _ = w.Write(pair.KeyPEM)
++	case "pair":
++		_, _ = w.Write(pair.KeyPEM)
++		_, _ = w.Write(pair.CertPEM)
++	default:
++		http.Error(w, `invalid type; want "cert" (default), "key", or "pair"`, http.StatusBadRequest)
++	}
++}

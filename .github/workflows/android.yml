@@ -85,12 +85,17 @@ jobs:
       - name: Install Android platform and NDK
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;28.2.13676358"
 
+      - name: Verify Tailscale Android certificate patch
+        run: |
+          chmod +x scripts/prepare-patched-tailscale.sh scripts/test-prepare-patched-tailscale.sh
+          scripts/test-prepare-patched-tailscale.sh
+
       - name: Build native arm64 APK
         env:
           LOCALANT_BUILD_TSNET: "1"
           LOCALANT_NATIVE_TARGETS: android/arm64
         run: |
-          chmod +x gradlew scripts/build-native.sh
+          chmod +x gradlew scripts/build-native.sh scripts/prepare-patched-tailscale.sh
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
           ./gradlew clean lintDebug testDebugUnitTest compileDebugAndroidTestSources assembleDebug --no-daemon
 
