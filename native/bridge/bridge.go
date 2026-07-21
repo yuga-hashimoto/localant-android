@@ -47,6 +47,10 @@ type Bridge struct {
 	// networkChangeHook is used by tests. In production, network changes are
 	// injected into tsnet's live netmon monitor through server.Sys().NetMon.
 	networkChangeHook func()
+
+	// certificatePreflight is overridden only by tests. Production uses the
+	// tsnet LocalClient certificate API through preflightCertificate.
+	certificatePreflight func(context.Context, string) error
 }
 
 // NewBridge creates a stopped bridge bound to a Kotlin Host callback.
@@ -137,6 +141,16 @@ func (b *Bridge) run(ctx context.Context, stateDir, hostname, accessToken string
 		_ = ln.Close()
 		_ = srv.Close()
 		b.setError("Tailscale did not provide an HTTPS certificate domain. Enable MagicDNS and HTTPS certificates for the tailnet, then restart LocalAnt.")
+		return
+	}
+	if err := b.preflightCertificate(ctx, domains[0]); err != nil {
+		_ = ln.Close()
+		_ = srv.Close()
+		if ctx.Err() != nil {
+			b.setStopped()
+			return
+		}
+		b.setError(err.Error())
 		return
 	}
 	endpoint := "https://" + domains[0] + mcpPath + "?key=" + url.QueryEscape(accessToken)
