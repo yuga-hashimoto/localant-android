@@ -10,3 +10,7 @@ native/localantbridge.aar
 app/libs/*
 .tools/
 .worktrees/
+*.jks
+*.keystore
+*.p12
+release-signing.properties

@@ -8,6 +8,16 @@ plugins {
 
 val buildTsnetBridge = providers.environmentVariable("LOCALANT_BUILD_TSNET").orNull == "1"
 val nativeBridgeAar = layout.projectDirectory.file("libs/localant-native.aar").asFile
+val releaseStoreFile = providers.environmentVariable("LOCALANT_RELEASE_STORE_FILE").orNull
+val releaseStorePassword = providers.environmentVariable("LOCALANT_RELEASE_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("LOCALANT_RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("LOCALANT_RELEASE_KEY_PASSWORD").orNull
+val releaseSigningConfigured = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "dev.localant.android"
@@ -17,15 +27,34 @@ android {
         applicationId = "dev.localant.android"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = providers.environmentVariable("LOCALANT_VERSION_CODE").orNull?.toIntOrNull() ?: 1
+        versionName = providers.environmentVariable("LOCALANT_VERSION_NAME").orNull ?: "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("boolean", "NATIVE_TSNET_ENABLED", buildTsnetBridge.toString())
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(requireNotNull(releaseStoreFile))
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
+    }
+
     buildTypes {
         release {
+            isDebuggable = false
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -105,4 +134,20 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+val releaseTaskNames = setOf("assembleRelease", "bundleRelease", "packageRelease")
+
+tasks.configureEach {
+    if (name in releaseTaskNames) {
+        doFirst {
+            if (!releaseSigningConfigured) {
+                throw GradleException(
+                    "Release signing is not configured. Set LOCALANT_RELEASE_STORE_FILE, " +
+                        "LOCALANT_RELEASE_STORE_PASSWORD, LOCALANT_RELEASE_KEY_ALIAS, and " +
+                        "LOCALANT_RELEASE_KEY_PASSWORD.",
+                )
+            }
+        }
+    }
 }
