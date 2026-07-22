@@ -188,7 +188,6 @@ object DeviceTools {
                 "properties",
                 buildJsonObject {
                     declaredProperties.forEach { (key, value) -> put(key, value) }
-                    put("_approvalId", buildJsonObject { put("type", "string") })
                 },
             )
             schemaBody

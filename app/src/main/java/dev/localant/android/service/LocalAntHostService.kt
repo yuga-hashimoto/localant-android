@@ -12,7 +12,7 @@ import dev.localant.android.MainActivity
 import dev.localant.android.R
 import dev.localant.android.accessibility.CurrentAccessibilityGateway
 import dev.localant.android.accessibility.DeviceTools
-import dev.localant.android.approval.DefaultApprovalPolicy
+import dev.localant.android.approval.ApprovalFreePolicy
 import dev.localant.android.bridge.BridgeState
 import dev.localant.android.bridge.NativeBridge
 import dev.localant.android.bridge.NativeBridgeConfig
@@ -26,11 +26,8 @@ import dev.localant.android.shell.SandboxShellEngine
 import dev.localant.android.shell.ShellTools
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -39,8 +36,6 @@ class LocalAntHostService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var bridge: NativeBridge? = null
     private var shell: SandboxShellEngine? = null
-    private var approvalMonitor: Job? = null
-    private var lastApprovalCount = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -78,6 +73,7 @@ class LocalAntHostService : Service() {
         if (bridge?.status() == BridgeState.RUNNING) return
         try {
             val appServices = LocalAntAppServices.get(applicationContext)
+            appServices.approvals.expireStale(Long.MAX_VALUE)
             val workspace = File(filesDir, "workspace").canonicalFile.also { it.mkdirs() }
             val shellEngine = SandboxShellEngine(
                 workspaceRoot = workspace,
@@ -89,7 +85,7 @@ class LocalAntHostService : Service() {
             }
             val secureExecutor = SecureToolExecutor(
                 registry = registry,
-                approvalPolicy = DefaultApprovalPolicy(appServices.approvals),
+                approvalPolicy = ApprovalFreePolicy(),
                 approvals = appServices.approvals,
                 audit = appServices.audit,
             )
@@ -106,9 +102,7 @@ class LocalAntHostService : Service() {
                 host,
             )
 
-            val pending = appServices.approvals.listPending().size
-            publish(hostStateForBridge(nativeBridge, pending))
-            startApprovalMonitor(appServices)
+            publish(hostStateForBridge(nativeBridge, pendingApprovals = 0))
         } catch (error: Exception) {
             publish(
                 HostState(
@@ -120,42 +114,12 @@ class LocalAntHostService : Service() {
     }
 
     private suspend fun stopHosting() {
-        approvalMonitor?.cancel()
-        approvalMonitor = null
-        lastApprovalCount = 0
-        getSystemService(NotificationManager::class.java).cancel(APPROVAL_NOTIFICATION_ID)
         shell?.cancelAll()
         shell = null
         runCatching { bridge?.stop() }
         bridge = null
         HostStateStore.shared.stopped()
         getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
-    }
-
-    private fun startApprovalMonitor(appServices: LocalAntAppServices) {
-        approvalMonitor?.cancel()
-        approvalMonitor = scope.launch {
-            while (isActive) {
-                appServices.approvals.expireStale(System.currentTimeMillis())
-                val pending = appServices.approvals.listPending().size
-                val current = HostStateStore.shared.state.value
-                val next = bridge?.let { hostStateForBridge(it, pending) }
-                    ?: current.copy(pendingApprovals = pending)
-                if (current.phase != HostPhase.STOPPED && next != current) {
-                    publish(next)
-                }
-                if (pending > 0 && pending != lastApprovalCount) {
-                    getSystemService(NotificationManager::class.java).notify(
-                        APPROVAL_NOTIFICATION_ID,
-                        approvalNotification(pending),
-                    )
-                } else if (pending == 0 && lastApprovalCount > 0) {
-                    getSystemService(NotificationManager::class.java).cancel(APPROVAL_NOTIFICATION_ID)
-                }
-                lastApprovalCount = pending
-                delay(APPROVAL_POLL_MS)
-            }
-        }
     }
 
     private fun hostStateForBridge(nativeBridge: NativeBridge, pendingApprovals: Int): HostState {
@@ -216,15 +180,6 @@ class LocalAntHostService : Service() {
         .addAction(0, "Stop", servicePendingIntent(ACTION_STOP, 3))
         .build()
 
-    private fun approvalNotification(count: Int) = NotificationCompat.Builder(this, APPROVAL_CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.stat_sys_warning)
-        .setContentTitle("LocalAnt approval required")
-        .setContentText("$count ChatGPT operation(s) are waiting for approval on this phone.")
-        .setAutoCancel(true)
-        .setPriority(NotificationCompat.PRIORITY_HIGH)
-        .setContentIntent(activityPendingIntent())
-        .build()
-
     private fun activityPendingIntent(): PendingIntent = PendingIntent.getActivity(
         this,
         1,
@@ -247,16 +202,7 @@ class LocalAntHostService : Service() {
         ).apply {
             description = "Shows when this phone is hosting the LocalAnt MCP endpoint."
         }
-        val approvalChannel = NotificationChannel(
-            APPROVAL_CHANNEL_ID,
-            "LocalAnt approvals",
-            NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = "Alerts when ChatGPT requests a locally approved Android operation."
-        }
-        getSystemService(NotificationManager::class.java).createNotificationChannels(
-            listOf(channel, approvalChannel),
-        )
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     private fun deviceHostname(): String {
@@ -273,9 +219,6 @@ class LocalAntHostService : Service() {
         const val ACTION_STOP = "dev.localant.android.action.STOP"
         const val ACTION_PAUSE = "dev.localant.android.action.PAUSE"
         private const val CHANNEL_ID = "localant_host"
-        private const val APPROVAL_CHANNEL_ID = "localant_approvals"
         private const val NOTIFICATION_ID = 4101
-        private const val APPROVAL_NOTIFICATION_ID = 4102
-        private const val APPROVAL_POLL_MS = 1_000L
     }
 }

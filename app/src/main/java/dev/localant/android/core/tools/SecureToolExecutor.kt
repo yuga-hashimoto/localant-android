@@ -98,6 +98,7 @@ class SecureToolExecutor(
                     )
                     return failure
                 }
+                ApprovalRequirement.ALWAYS_ALLOW -> "AUTO_POLICY"
                 ApprovalRequirement.NONE -> if (definition.risk.value == 0) "AUTO" else "SESSION"
             }
         }

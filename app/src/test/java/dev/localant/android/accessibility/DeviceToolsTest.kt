@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,7 +27,7 @@ class DeviceToolsTest {
         assertEquals(3, registry.findDefinition("device_launch_app")!!.risk.value)
         val properties = registry.findDefinition("device_tap")!!.inputSchema
             .getValue("properties").jsonObject
-        assertTrue(properties.containsKey("_approvalId"))
+        assertFalse(properties.containsKey("_approvalId"))
     }
 
     @Test

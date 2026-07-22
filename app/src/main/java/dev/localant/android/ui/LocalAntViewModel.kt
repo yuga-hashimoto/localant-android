@@ -48,8 +48,8 @@ class LocalAntViewModel(application: Application) : AndroidViewModel(application
             LocalAntAccessibilityService.current() != null ||
                 AccessibilityServiceStatus.isEnabled(getApplication())
         mutableApprovals.value = withContext(Dispatchers.IO) {
-            services.approvals.expireStale(System.currentTimeMillis())
-            services.approvals.listPending()
+            services.approvals.expireStale(Long.MAX_VALUE)
+            emptyList()
         }
     }
 

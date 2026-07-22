@@ -10,6 +10,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -23,7 +24,7 @@ class ShellToolsTest {
 
         assertEquals(3, definition.risk.value)
         assertEquals("object", definition.inputSchema.getValue("type").jsonPrimitive.content)
-        assertTrue(
+        assertFalse(
             definition.inputSchema.getValue("properties").jsonObject.containsKey("_approvalId"),
         )
     }

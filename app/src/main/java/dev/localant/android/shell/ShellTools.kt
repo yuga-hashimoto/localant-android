@@ -48,7 +48,6 @@ object ShellTools {
                                     put("maximum", 60_000)
                                 },
                             )
-                            put("_approvalId", buildJsonObject { put("type", "string") })
                         },
                     )
                     put("required", buildJsonArray { add(JsonPrimitive("command")) })

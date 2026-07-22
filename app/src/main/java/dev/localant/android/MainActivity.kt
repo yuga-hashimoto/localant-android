@@ -235,7 +235,8 @@ private fun LocalAntDashboard(
         HorizontalDivider()
         Text("Security", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(
-            "Risk 3 shell and text-input actions require local approval. Risk 4 operations are not registered. " +
+            "All registered MCP tools run immediately without local approval. Protected apps, password fields, " +
+                "workspace boundaries, dangerous shell syntax, and unregistered risk 4 operations remain blocked. " +
                 "Rotating the token immediately invalidates the URL and stops hosting.",
         )
         OutlinedButton(onClick = onRotateToken) { Text("Rotate MCP token") }
