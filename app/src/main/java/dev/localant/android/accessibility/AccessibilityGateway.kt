@@ -23,5 +23,5 @@ interface AccessibilityGateway {
     suspend fun inputText(text: String, nodeId: String? = null): Boolean
     fun pressBack(): Boolean
     fun pressHome(): Boolean
-    fun launchApp(packageName: String): Boolean
+    suspend fun launchApp(packageName: String): Boolean
 }

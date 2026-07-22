@@ -97,47 +97,31 @@ curl --silent --show-error \
   "$LOCALANT_HOST/mcp"
 ```
 
-## Approval flow
+## Call a registered action tool
 
-The first sensitive call returns an MCP tool result with `isError: true` and structured content similar to:
-
-```json
-{
-  "code": "APPROVAL_REQUIRED",
-  "message": "Approve this operation on the Android device, then retry with _approvalId.",
-  "details": {
-    "approvalId": "request-id-from-phone",
-    "expiresAtMs": 1780000000000
-  }
-}
-```
-
-Approve the request on the phone, then retry the same tool and session with `_approvalId`:
+The current build executes registered tools immediately after token and MCP-session validation. No `_approvalId` retry is required.
 
 ```bash
-export APPROVAL_ID='request-id-from-phone'
-
 curl --silent --show-error \
   -H "Authorization: Bearer $LOCALANT_TOKEN" \
   -H "Mcp-Session-Id: $MCP_SESSION_ID" \
   -H 'Mcp-Protocol-Version: 2025-11-25' \
   -H 'Content-Type: application/json' \
-  --data "{
-    \"jsonrpc\": \"2.0\",
-    \"id\": 4,
-    \"method\": \"tools/call\",
-    \"params\": {
-      \"name\": \"shell_execute\",
-      \"arguments\": {
-        \"command\": \"pwd\",
-        \"_approvalId\": \"$APPROVAL_ID\"
+  --data '{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "shell_execute",
+      "arguments": {
+        "command": "pwd"
       }
     }
-  }" \
+  }' \
   "$LOCALANT_HOST/mcp"
 ```
 
-An approval ID is valid only for the matching tool and MCP session and is consumed once.
+`device_launch_app` can still return stable tool errors such as `DEVICE_LOCKED`, `OVERLAY_PERMISSION_REQUIRED`, or `APP_LAUNCH_BLOCKED`. These indicate that Android did not permit or complete the foreground transition; they are not approval requests.
 
 ## Delete the MCP session
 

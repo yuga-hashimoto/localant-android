@@ -2,10 +2,13 @@ package dev.localant.android.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.app.KeyguardManager
 import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
+import android.os.SystemClock
+import android.provider.Settings
 import android.util.Base64
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
@@ -18,16 +21,20 @@ import kotlin.coroutines.resume
 class LocalAntAccessibilityService : AccessibilityService(), AccessibilityGateway {
     private val normalizer = UiTreeNormalizer()
     private val protectedPackages = ProtectedPackagePolicy()
-
-    @Volatile
-    private var latestNodePaths: Map<String, List<Int>> = emptyMap()
+    private val foregroundWindowTracker = ForegroundWindowTracker()
+    private val uiSnapshotStore = UiSnapshotStore()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         currentRef = WeakReference(this)
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            uiSnapshotStore.invalidate()
+            foregroundWindowTracker.observe(event.packageName?.toString())
+        }
+    }
 
     override fun onInterrupt() = Unit
 
@@ -39,16 +46,16 @@ class LocalAntAccessibilityService : AccessibilityService(), AccessibilityGatewa
     override fun isConnected(): Boolean = currentRef.get() === this
 
     override fun currentPackage(): String? =
-        rootInActiveWindow?.packageName?.toString()
+        foregroundWindowTracker.currentPackage(
+            rootPackage = rootInActiveWindow?.packageName?.toString(),
+        )
 
     override suspend fun snapshotTree(): UiTreeSnapshot {
-        val root = requireRoot()
-        val packageName = root.packageName?.toString()
-            ?: throw DeviceOperationException("ACCESSIBILITY_UNAVAILABLE", "Foreground package is unavailable.")
+        val (root, packageName) = requireActiveRoot()
         ensureNotProtected(packageName)
         val raw = toRawNode(root, depth = 0, budget = NodeBudget(MAX_RAW_NODES))
         val normalized = normalizer.normalize(packageName, raw)
-        latestNodePaths = normalized.nodePaths
+        uiSnapshotStore.replace(packageName, normalized.nodePaths)
         return normalized.tree
     }
 
@@ -123,13 +130,10 @@ class LocalAntAccessibilityService : AccessibilityService(), AccessibilityGatewa
     }
 
     override suspend fun clickNode(nodeId: String): Boolean {
-        ensureNotProtected(currentPackage())
-        val path = latestNodePaths[nodeId]
-            ?: throw DeviceOperationException(
-                "NODE_NOT_FOUND",
-                "Node $nodeId is not present in the most recent UI snapshot.",
-            )
-        val node = resolveNode(requireRoot(), path)
+        val (root, packageName) = requireActiveRoot()
+        ensureNotProtected(packageName)
+        val path = uiSnapshotStore.resolve(nodeId, currentPackage = packageName)
+        val node = resolveNode(root, path)
             ?: throw DeviceOperationException("NODE_NOT_FOUND", "The Android UI changed before the node could be clicked.")
         return node.isEnabled && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
@@ -160,11 +164,10 @@ class LocalAntAccessibilityService : AccessibilityService(), AccessibilityGatewa
     }
 
     override suspend fun inputText(text: String, nodeId: String?): Boolean {
-        ensureNotProtected(currentPackage())
-        val root = requireRoot()
+        val (root, packageName) = requireActiveRoot()
+        ensureNotProtected(packageName)
         val node = if (nodeId != null) {
-            val path = latestNodePaths[nodeId]
-                ?: throw DeviceOperationException("NODE_NOT_FOUND", "Unknown node ID $nodeId.")
+            val path = uiSnapshotStore.resolve(nodeId, currentPackage = packageName)
             resolveNode(root, path)
         } else {
             root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
@@ -189,12 +192,33 @@ class LocalAntAccessibilityService : AccessibilityService(), AccessibilityGatewa
         return performGlobalAction(GLOBAL_ACTION_HOME)
     }
 
-    override fun launchApp(packageName: String): Boolean {
+    override suspend fun launchApp(packageName: String): Boolean {
         ensureNotProtected(packageName)
+        AppLaunchPolicy.requireAllowed(
+            deviceLocked = getSystemService(KeyguardManager::class.java).isDeviceLocked,
+            overlayPermissionGranted = Settings.canDrawOverlays(this),
+        )
         val intent = packageManager.getLaunchIntentForPackage(packageName)
             ?: throw DeviceOperationException("APP_NOT_FOUND", "No launchable app exists for $packageName.")
-        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        intent.addFlags(
+            android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED,
+        )
         startActivity(intent)
+        val launched = AppLaunchMonitor(
+            currentPackage = ::currentPackage,
+            nowUptimeMs = SystemClock::uptimeMillis,
+        ).awaitForeground(
+            packageName = packageName,
+            timeoutMs = APP_LAUNCH_TIMEOUT_MS,
+            pollIntervalMs = APP_LAUNCH_POLL_MS,
+        )
+        if (!launched) {
+            throw DeviceOperationException(
+                "APP_LAUNCH_BLOCKED",
+                "Android accepted the launch request for $packageName but did not bring it to the foreground.",
+            )
+        }
         return true
     }
 
@@ -204,6 +228,14 @@ class LocalAntAccessibilityService : AccessibilityService(), AccessibilityGatewa
                 "ACCESSIBILITY_UNAVAILABLE",
                 "Accessibility is enabled but no active Android window is available.",
             )
+
+    private fun requireActiveRoot(): Pair<AccessibilityNodeInfo, String> {
+        val root = requireRoot()
+        val packageName = foregroundWindowTracker.requireMatchingRoot(
+            rootPackage = root.packageName?.toString(),
+        )
+        return root to packageName
+    }
 
     private fun ensureNotProtected(packageName: String?) {
         if (protectedPackages.isProtected(packageName)) {
@@ -286,6 +318,8 @@ class LocalAntAccessibilityService : AccessibilityService(), AccessibilityGatewa
         private const val MAX_RAW_NODES = 600
         private const val MAX_TREE_DEPTH = 50
         private const val MAX_SCREENSHOT_BYTES = 4 * 1024 * 1024
+        private const val APP_LAUNCH_TIMEOUT_MS = 3_000L
+        private const val APP_LAUNCH_POLL_MS = 100L
 
         @Volatile
         private var currentRef = WeakReference<LocalAntAccessibilityService>(null)

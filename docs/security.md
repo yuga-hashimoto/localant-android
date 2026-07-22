@@ -54,12 +54,21 @@ Risk values remain attached to definitions for audit and future policy changes, 
 - Password nodes are removed from normalized UI trees.
 - Text cannot be sent to password fields.
 - UI trees are bounded in depth and node count.
-- Node IDs refer to paths in the most recent snapshot and fail safely when the UI changes.
+- The latest Android window-state event is tracked independently of `rootInActiveWindow`.
+- UI-tree, node-click, and text-input operations are rejected when the visible package and Accessibility root package differ.
+- Node IDs are bound to the package that produced the snapshot and fail with `STALE_UI_SNAPSHOT` after an app change.
 - LocalAnt protects its own package so the MCP URL cannot be read through its UI tree or screenshot tool.
 - Authenticators, wallets, password managers, and banking-like packages are blocked by default.
 - Android secure windows can prevent screenshots and are not bypassed.
 
 The protected-package list is a defense-in-depth heuristic, not a complete catalog of every financial or identity app. Add organization-specific packages before production use.
+
+## App-launch controls
+
+- Remote app launch requires the device to be unlocked.
+- Android **Display over other apps** permission is required so the background MCP service is eligible to request an activity launch. LocalAnt does not create or display overlay windows.
+- The launch request is observed for up to three seconds; success is returned only after the requested package becomes the tracked foreground package.
+- Missing permission, a locked device, or a blocked transition returns a stable tool error instead of `executed: true`.
 
 ## Shell controls
 
@@ -88,7 +97,7 @@ This is a policy-constrained shell, not a kernel sandbox. Android app-UID isolat
 ## Known limitations
 
 - A compromised phone or malicious app with equivalent privileges can undermine device-local controls.
-- Accessibility is a powerful Android permission and should be disabled when LocalAnt is not needed.
+- Accessibility and Display over other apps are powerful Android permissions and should be disabled when LocalAnt is not needed.
 - Funnel makes the endpoint reachable from the public internet; token secrecy is mandatory.
 - The current rate limiter is process-local and resets when the app restarts.
 - The protected-package heuristic requires maintenance.

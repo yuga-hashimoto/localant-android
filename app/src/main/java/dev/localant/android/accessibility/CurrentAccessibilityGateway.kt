@@ -19,5 +19,5 @@ class CurrentAccessibilityGateway : AccessibilityGateway {
     override suspend fun inputText(text: String, nodeId: String?): Boolean = service().inputText(text, nodeId)
     override fun pressBack(): Boolean = service().pressBack()
     override fun pressHome(): Boolean = service().pressHome()
-    override fun launchApp(packageName: String): Boolean = service().launchApp(packageName)
+    override suspend fun launchApp(packageName: String): Boolean = service().launchApp(packageName)
 }

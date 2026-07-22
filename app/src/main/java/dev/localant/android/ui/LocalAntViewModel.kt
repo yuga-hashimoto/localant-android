@@ -2,6 +2,7 @@ package dev.localant.android.ui
 
 import android.app.Application
 import android.content.Intent
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -30,6 +31,9 @@ class LocalAntViewModel(application: Application) : AndroidViewModel(application
     private val mutableAccessibilityConnected = MutableStateFlow(false)
     val accessibilityConnected: StateFlow<Boolean> = mutableAccessibilityConnected.asStateFlow()
 
+    private val mutableOverlayPermissionGranted = MutableStateFlow(false)
+    val overlayPermissionGranted: StateFlow<Boolean> = mutableOverlayPermissionGranted.asStateFlow()
+
     init {
         viewModelScope.launch {
             while (isActive) {
@@ -47,6 +51,7 @@ class LocalAntViewModel(application: Application) : AndroidViewModel(application
         mutableAccessibilityConnected.value =
             LocalAntAccessibilityService.current() != null ||
                 AccessibilityServiceStatus.isEnabled(getApplication())
+        mutableOverlayPermissionGranted.value = Settings.canDrawOverlays(getApplication())
         mutableApprovals.value = withContext(Dispatchers.IO) {
             services.approvals.expireStale(Long.MAX_VALUE)
             emptyList()

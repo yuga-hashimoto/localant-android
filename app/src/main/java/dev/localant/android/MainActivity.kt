@@ -59,11 +59,14 @@ class MainActivity : ComponentActivity() {
                 val state by viewModel.hostState.collectAsStateWithLifecycle()
                 val approvals by viewModel.approvals.collectAsStateWithLifecycle()
                 val accessibilityConnected by viewModel.accessibilityConnected.collectAsStateWithLifecycle()
+                val overlayPermissionGranted by viewModel.overlayPermissionGranted.collectAsStateWithLifecycle()
                 LocalAntDashboard(
                     state = state,
                     approvals = approvals,
                     accessibilityConnected = accessibilityConnected,
+                    overlayPermissionGranted = overlayPermissionGranted,
                     onOpenAccessibility = ::openAccessibilitySettings,
+                    onOpenOverlay = ::openOverlaySettings,
                     onOpenBattery = ::openBatterySettings,
                     onStart = viewModel::startHosting,
                     onStop = viewModel::stopHosting,
@@ -85,6 +88,15 @@ class MainActivity : ComponentActivity() {
 
     private fun openAccessibilitySettings() {
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    private fun openOverlaySettings() {
+        startActivity(
+            Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName"),
+            ),
+        )
     }
 
     private fun openBatterySettings() {
@@ -126,7 +138,9 @@ private fun LocalAntDashboard(
     state: HostState,
     approvals: List<PendingApproval>,
     accessibilityConnected: Boolean,
+    overlayPermissionGranted: Boolean,
     onOpenAccessibility: () -> Unit,
+    onOpenOverlay: () -> Unit,
     onOpenBattery: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
@@ -166,6 +180,20 @@ private fun LocalAntDashboard(
 
         SetupCard(
             number = "2",
+            title = "Allow remote app launch",
+            description = if (overlayPermissionGranted) {
+                "Background app launch permission is enabled. LocalAnt does not draw overlay UI."
+            } else {
+                "Android requires Display over other apps permission before a background service can launch apps."
+            },
+        ) {
+            OutlinedButton(onClick = onOpenOverlay) {
+                Text(if (overlayPermissionGranted) "App launch enabled" else "Open overlay permission")
+            }
+        }
+
+        SetupCard(
+            number = "3",
             title = "Allow reliable background hosting",
             description = "Exclude LocalAnt from aggressive battery restrictions so the MCP endpoint remains reachable.",
         ) {
@@ -173,7 +201,7 @@ private fun LocalAntDashboard(
         }
 
         SetupCard(
-            number = "3",
+            number = "4",
             title = "Start LocalAnt",
             description = "Starting creates the on-device shell workspace and launches the embedded MCP bridge.",
         ) {
@@ -185,13 +213,16 @@ private fun LocalAntDashboard(
             if (active) {
                 Button(onClick = onStop) { Text("Stop LocalAnt") }
             } else {
-                Button(onClick = onStart, enabled = accessibilityConnected) { Text("Start LocalAnt") }
+                Button(
+                    onClick = onStart,
+                    enabled = accessibilityConnected && overlayPermissionGranted,
+                ) { Text("Start LocalAnt") }
             }
         }
 
         state.authUrl?.let { authUrl ->
             SetupCard(
-                number = "4",
+                number = "5",
                 title = "Sign in to Tailscale",
                 description = "Authentication happens in your browser. The private tsnet state stays on this phone.",
             ) {
@@ -201,7 +232,7 @@ private fun LocalAntDashboard(
 
         state.publicUrl?.let { url ->
             SetupCard(
-                number = "5",
+                number = "6",
                 title = "Add the MCP URL to ChatGPT",
                 description = redactMcpUrl(url),
             ) {

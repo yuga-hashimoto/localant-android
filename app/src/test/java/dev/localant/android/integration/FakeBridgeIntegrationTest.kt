@@ -115,6 +115,6 @@ class FakeBridgeIntegrationTest {
         override suspend fun inputText(text: String, nodeId: String?): Boolean = true
         override fun pressBack(): Boolean = true
         override fun pressHome(): Boolean = true
-        override fun launchApp(packageName: String): Boolean = true
+        override suspend fun launchApp(packageName: String): Boolean = true
     }
 }

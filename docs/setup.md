@@ -23,16 +23,17 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ## First run
 
 1. Open **LocalAnt Android**.
-2. Allow notifications. The foreground notification provides immediate Pause and Stop actions, and approval notifications appear for sensitive operations.
+2. Allow notifications. The foreground notification provides immediate Pause and Stop actions.
 3. Tap **Open Accessibility settings**.
 4. Select **LocalAnt Android** and enable the service.
 5. Return to LocalAnt. The first card should show **Accessibility enabled**.
-6. Tap **Open battery settings** and exclude LocalAnt from manufacturer battery restrictions when available.
-7. Tap **Start LocalAnt**.
-8. When the status changes to `AUTH_REQUIRED`, tap **Open Tailscale sign-in**.
-9. Sign in and authorize the new LocalAnt node.
-10. Return to LocalAnt. The app automatically continues from authentication to Funnel startup.
-11. When the status is `RUNNING`, tap **Copy MCP URL**.
+6. Tap **Open overlay permission** and enable **Display over other apps** for LocalAnt. This permission allows Android to accept app-launch requests from the background MCP service; LocalAnt does not draw overlay UI.
+7. Tap **Open battery settings** and exclude LocalAnt from manufacturer battery restrictions when available.
+8. Tap **Start LocalAnt**.
+9. When the status changes to `AUTH_REQUIRED`, tap **Open Tailscale sign-in**.
+10. Sign in and authorize the new LocalAnt node.
+11. Return to LocalAnt. The app automatically continues from authentication to Funnel startup.
+12. When the status is `RUNNING`, tap **Copy MCP URL**.
 
 The copied URL contains the MCP token. Treat the complete URL as a password.
 
@@ -70,16 +71,11 @@ In ChatGPT Web:
 
 The connector should discover the tools through `initialize` and `tools/list`.
 
-## Approvals
+## Tool execution
 
-Sensitive calls return `APPROVAL_REQUIRED` to ChatGPT and appear in the app within about one second.
+All registered tools run immediately after MCP token authentication. Risk levels remain attached to tool definitions for audit and future policy changes, but the current build does not use an approval round trip. Keep the complete connector URL secret.
 
-- **Allow once** authorizes that exact request ID and session once.
-- **Session** is available only for risk 1–2 tools and authorizes the same tool for the current MCP session.
-- **Deny** removes the request.
-- Risk 3 actions, including shell and text input, always require a new local approval.
-
-After approval, ChatGPT must retry the same tool call with the supplied `_approvalId` field.
+`device_launch_app` additionally requires an unlocked device and the **Display over other apps** permission. It returns success only after the requested package is observed in the foreground.
 
 ## Stop and rotate
 
@@ -114,6 +110,13 @@ Grant the `funnel` node attribute to this node or its dedicated tag. Keep the gr
 - Secure windows can prevent screenshots.
 - Password fields are omitted from UI trees and cannot receive text.
 - LocalAnt, authenticators, wallets, password managers, and banking-like packages are blocked by device policy.
+- UI-tree and node operations fail with `WINDOW_MISMATCH` or `STALE_UI_SNAPSHOT` instead of controlling a hidden app when Android exposes an outdated accessibility root.
+
+### App launch fails
+
+- Unlock the phone before calling `device_launch_app`.
+- Grant LocalAnt **Display over other apps** permission from the app setup screen.
+- A successful response means the requested package was observed in the foreground; blocked launches return `APP_LAUNCH_BLOCKED` rather than a false success.
 
 ### Shell command rejected
 

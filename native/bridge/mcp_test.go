@@ -86,11 +86,13 @@ func TestInitializeNegotiatesVersionAndCreatesSession(t *testing.T) {
 		t.Fatalf("protocolVersion=%v", result["protocolVersion"])
 	}
 	serverInfo := result["serverInfo"].(map[string]any)
-	if serverInfo["version"] != "0.1.7" {
+	if serverInfo["version"] != "0.1.8" {
 		t.Fatalf("serverInfo=%v", serverInfo)
 	}
 	instructions := result["instructions"].(string)
-	if strings.Contains(instructions, "APPROVAL_REQUIRED") || !strings.Contains(instructions, "without local approval") {
+	if strings.Contains(instructions, "APPROVAL_REQUIRED") ||
+		!strings.Contains(instructions, "without local approval") ||
+		!strings.Contains(instructions, "Display over other apps") {
 		t.Fatalf("instructions=%q", instructions)
 	}
 }

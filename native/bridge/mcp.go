@@ -252,9 +252,9 @@ func (s *mcpServer) handleInitialize(w http.ResponseWriter, req rpcRequest) {
 		},
 		"serverInfo": map[string]any{
 			"name":    "LocalAnt Android",
-			"version": "0.1.7",
+			"version": "0.1.8",
 		},
-		"instructions": "Android operations are executed locally. All registered tools run immediately without local approval. Screenshot results are returned as MCP image content.",
+		"instructions": "Android operations are executed locally. All registered tools run immediately without local approval. Screenshot results are returned as MCP image content. App launch requires an unlocked device and the Display over other apps permission.",
 	}))
 }
 
