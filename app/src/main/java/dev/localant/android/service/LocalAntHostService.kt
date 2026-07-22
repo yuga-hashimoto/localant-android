@@ -36,6 +36,7 @@ class LocalAntHostService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var bridge: NativeBridge? = null
     private var shell: SandboxShellEngine? = null
+    private var bridgeStateMonitor: BridgeStateMonitor? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -70,7 +71,7 @@ class LocalAntHostService : Service() {
     }
 
     private suspend fun startHosting() {
-        if (bridge?.status() == BridgeState.RUNNING) return
+        if (bridge != null) return
         try {
             val appServices = LocalAntAppServices.get(applicationContext)
             appServices.approvals.expireStale(Long.MAX_VALUE)
@@ -102,8 +103,20 @@ class LocalAntHostService : Service() {
                 host,
             )
 
-            publish(hostStateForBridge(nativeBridge, pendingApprovals = 0))
+            bridgeStateMonitor = BridgeStateMonitor(
+                scope = scope,
+                stateProvider = { hostStateForBridge(nativeBridge, pendingApprovals = 0) },
+                onState = { state ->
+                    if (HostStateStore.shared.state.value != state) publish(state)
+                },
+            ).also { it.start() }
         } catch (error: Exception) {
+            bridgeStateMonitor?.stop()
+            bridgeStateMonitor = null
+            shell?.cancelAll()
+            shell = null
+            runCatching { bridge?.stop() }
+            bridge = null
             publish(
                 HostState(
                     phase = HostPhase.ERROR,
@@ -114,6 +127,8 @@ class LocalAntHostService : Service() {
     }
 
     private suspend fun stopHosting() {
+        bridgeStateMonitor?.stop()
+        bridgeStateMonitor = null
         shell?.cancelAll()
         shell = null
         runCatching { bridge?.stop() }
