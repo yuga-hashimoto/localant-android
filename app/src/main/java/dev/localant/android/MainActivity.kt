@@ -40,6 +40,7 @@ import dev.localant.android.approval.PendingApproval
 import dev.localant.android.service.HostPhase
 import dev.localant.android.service.HostState
 import dev.localant.android.ui.LocalAntViewModel
+import dev.localant.android.ui.prepareChatGptConnectorLaunch
 import dev.localant.android.ui.redactMcpUrl
 
 class MainActivity : ComponentActivity() {
@@ -66,7 +67,8 @@ class MainActivity : ComponentActivity() {
                     onOpenBattery = ::openBatterySettings,
                     onStart = viewModel::startHosting,
                     onStop = viewModel::stopHosting,
-                    onOpenAuth = ::openUrl,
+                    onOpenUrl = ::openUrl,
+                    onOpenBrowser = ::openBrowserUrl,
                     onApproveOnce = { viewModel.approve(it, forSession = false) },
                     onApproveSession = { viewModel.approve(it, forSession = true) },
                     onDeny = viewModel::deny,
@@ -93,6 +95,21 @@ class MainActivity : ComponentActivity() {
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
             .onFailure { Toast.makeText(this, "Could not open the URL.", Toast.LENGTH_SHORT).show() }
     }
+
+    private fun openBrowserUrl(url: String) {
+        val uri = Uri.parse(url)
+        val browserIntent = Intent.makeMainSelectorActivity(
+            Intent.ACTION_MAIN,
+            Intent.CATEGORY_APP_BROWSER,
+        ).apply {
+            data = uri
+        }
+        runCatching { startActivity(browserIntent) }
+            .recoverCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
+            }
+            .onFailure { Toast.makeText(this, "Could not open the browser.", Toast.LENGTH_SHORT).show() }
+    }
 }
 
 @Composable
@@ -113,7 +130,8 @@ private fun LocalAntDashboard(
     onOpenBattery: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
-    onOpenAuth: (String) -> Unit,
+    onOpenUrl: (String) -> Unit,
+    onOpenBrowser: (String) -> Unit,
     onApproveOnce: (String) -> Unit,
     onApproveSession: (String) -> Unit,
     onDeny: (String) -> Unit,
@@ -177,7 +195,7 @@ private fun LocalAntDashboard(
                 title = "Sign in to Tailscale",
                 description = "Authentication happens in your browser. The private tsnet state stays on this phone.",
             ) {
-                Button(onClick = { onOpenAuth(authUrl) }) { Text("Open Tailscale sign-in") }
+                Button(onClick = { onOpenUrl(authUrl) }) { Text("Open Tailscale sign-in") }
             }
         }
 
@@ -189,11 +207,18 @@ private fun LocalAntDashboard(
             ) {
                 Button(
                     onClick = {
+                        val launch = prepareChatGptConnectorLaunch(url)
+                        clipboard.setText(AnnotatedString(launch.clipboardText))
+                        onOpenBrowser(launch.browserUrl)
+                    },
+                ) { Text("Copy URL & open ChatGPT") }
+                OutlinedButton(
+                    onClick = {
                         clipboard.setText(AnnotatedString(url))
                     },
-                ) { Text("Copy MCP URL") }
+                ) { Text("Copy MCP URL only") }
                 Text(
-                    "In ChatGPT Web: Settings → Apps & Connectors → Advanced settings → Developer mode → Create connector.",
+                    "The MCP URL is copied before ChatGPT opens. Paste it into the Server URL field.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
