@@ -11,7 +11,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,26 +27,51 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Accessibility
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.localant.android.approval.PendingApproval
 import dev.localant.android.service.HostPhase
 import dev.localant.android.service.HostState
+import dev.localant.android.ui.LocalAntTheme
 import dev.localant.android.ui.LocalAntViewModel
 import dev.localant.android.ui.prepareChatGptConnectorLaunch
 import dev.localant.android.ui.redactMcpUrl
@@ -125,15 +158,6 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun LocalAntTheme(content: @Composable () -> Unit) {
-    MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            content()
-        }
-    }
-}
-
-@Composable
 private fun LocalAntDashboard(
     state: HostState,
     approvals: List<PendingApproval>,
@@ -152,152 +176,376 @@ private fun LocalAntDashboard(
     onRotateToken: () -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Text("LocalAnt Android", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text("This phone is the MCP host, shell environment, and Android device controller.")
 
-        StatusCard(state)
-
-        SetupCard(
-            number = "1",
-            title = "Enable Android control",
-            description = if (accessibilityConnected) {
-                "AccessibilityService is connected. Password fields and protected apps remain blocked."
-            } else {
-                "Android requires you to enable LocalAnt manually in Accessibility settings."
-            },
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OutlinedButton(onClick = onOpenAccessibility) {
-                Text(if (accessibilityConnected) "Accessibility enabled" else "Open Accessibility settings")
-            }
-        }
-
-        SetupCard(
-            number = "2",
-            title = "Allow remote app launch",
-            description = if (overlayPermissionGranted) {
-                "Background app launch permission is enabled. LocalAnt does not draw overlay UI."
-            } else {
-                "Android requires Display over other apps permission before a background service can launch apps."
-            },
-        ) {
-            OutlinedButton(onClick = onOpenOverlay) {
-                Text(if (overlayPermissionGranted) "App launch enabled" else "Open overlay permission")
-            }
-        }
-
-        SetupCard(
-            number = "3",
-            title = "Allow reliable background hosting",
-            description = "Exclude LocalAnt from aggressive battery restrictions so the MCP endpoint remains reachable.",
-        ) {
-            OutlinedButton(onClick = onOpenBattery) { Text("Open battery settings") }
-        }
-
-        SetupCard(
-            number = "4",
-            title = "Start LocalAnt",
-            description = "Starting creates the on-device shell workspace and launches the embedded MCP bridge.",
-        ) {
-            val active = state.phase in setOf(
-                HostPhase.STARTING,
-                HostPhase.AUTH_REQUIRED,
-                HostPhase.RUNNING,
+            // Header
+            Text(
+                "LocalAnt",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onBackground,
             )
-            if (active) {
-                Button(onClick = onStop) { Text("Stop LocalAnt") }
+            Text(
+                "Your phone is the MCP host — shell, device control, and bridge to ChatGPT.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            // Status banner
+            StatusBanner(state)
+
+            Spacer(Modifier.height(4.dp))
+
+            // Setup steps
+            SectionLabel("Setup")
+
+            SetupStep(
+                icon = Icons.Filled.Accessibility,
+                title = "Android control",
+                isComplete = accessibilityConnected,
+                completeText = "Accessibility service connected",
+                pendingText = "Enable LocalAnt in Accessibility settings",
+                actionLabel = if (accessibilityConnected) "Enabled" else "Open settings",
+                onAction = onOpenAccessibility,
+            )
+
+            SetupStep(
+                icon = Icons.Filled.Layers,
+                title = "Remote app launch",
+                isComplete = overlayPermissionGranted,
+                completeText = "Background launch permission granted",
+                pendingText = "Grant \"Display over other apps\" permission",
+                actionLabel = if (overlayPermissionGranted) "Granted" else "Grant permission",
+                onAction = onOpenOverlay,
+            )
+
+            SetupStep(
+                icon = Icons.Filled.BatteryChargingFull,
+                title = "Background reliability",
+                isComplete = false,
+                completeText = "",
+                pendingText = "Exclude from battery optimization for stable hosting",
+                actionLabel = "Battery settings",
+                onAction = onOpenBattery,
+            )
+
+            // Start / Stop
+            Spacer(Modifier.height(4.dp))
+            val isRunning = state.phase in setOf(HostPhase.STARTING, HostPhase.AUTH_REQUIRED, HostPhase.RUNNING)
+            if (isRunning) {
+                Button(
+                    onClick = onStop,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
+                ) {
+                    Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Stop LocalAnt", style = MaterialTheme.typography.labelLarge)
+                }
             } else {
                 Button(
                     onClick = onStart,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
                     enabled = accessibilityConnected && overlayPermissionGranted,
-                ) { Text("Start LocalAnt") }
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Start LocalAnt", style = MaterialTheme.typography.labelLarge)
+                }
             }
-        }
 
-        state.authUrl?.let { authUrl ->
-            SetupCard(
-                number = "5",
-                title = "Sign in to Tailscale",
-                description = "Authentication happens in your browser. The private tsnet state stays on this phone.",
+            // Auth URL card
+            AnimatedVisibility(
+                visible = state.authUrl != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
             ) {
-                Button(onClick = { onOpenUrl(authUrl) }) { Text("Open Tailscale sign-in") }
+                state.authUrl?.let { authUrl ->
+                    ActionCard(
+                        icon = Icons.Filled.Link,
+                        title = "Sign in to Tailscale",
+                        description = "Authenticate in your browser. Private tsnet state stays on-device.",
+                    ) {
+                        Button(onClick = { onOpenUrl(authUrl) }) {
+                            Icon(Icons.Filled.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Open sign-in")
+                        }
+                    }
+                }
             }
-        }
 
-        state.publicUrl?.let { url ->
-            SetupCard(
-                number = "6",
-                title = "Add the MCP URL to ChatGPT",
-                description = redactMcpUrl(url),
+            // MCP URL card
+            AnimatedVisibility(
+                visible = state.publicUrl != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
             ) {
-                Button(
-                    onClick = {
-                        val launch = prepareChatGptConnectorLaunch(url)
-                        clipboard.setText(AnnotatedString(launch.clipboardText))
-                        onOpenBrowser(launch.browserUrl)
-                    },
-                ) { Text("Copy URL & open ChatGPT") }
-                OutlinedButton(
-                    onClick = {
-                        clipboard.setText(AnnotatedString(url))
-                    },
-                ) { Text("Copy MCP URL only") }
+                state.publicUrl?.let { url ->
+                    ActionCard(
+                        icon = Icons.Filled.OpenInBrowser,
+                        title = "Connect ChatGPT",
+                        description = redactMcpUrl(url),
+                    ) {
+                        Button(
+                            onClick = {
+                                val launch = prepareChatGptConnectorLaunch(url)
+                                clipboard.setText(AnnotatedString(launch.clipboardText))
+                                onOpenBrowser(launch.browserUrl)
+                            },
+                        ) {
+                            Icon(Icons.Filled.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Copy & open ChatGPT")
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        FilledTonalButton(
+                            onClick = { clipboard.setText(AnnotatedString(url)) },
+                        ) {
+                            Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Copy URL")
+                        }
+                    }
+                }
+            }
+
+            // Approvals
+            AnimatedVisibility(
+                visible = approvals.isNotEmpty(),
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Spacer(Modifier.height(8.dp))
+                    SectionLabel("Pending approvals")
+                    approvals.forEach { approval ->
+                        ApprovalCard(approval, onApproveOnce, onApproveSession, onDeny)
+                    }
+                }
+            }
+
+            // Security section
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(4.dp))
+            SectionLabel("Security")
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.Security,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.tertiary,
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "Protected apps, password fields, workspace boundaries, dangerous shell syntax, " +
+                                "and risk-4 operations remain blocked at all times.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedButton(onClick = onRotateToken) {
+                        Icon(Icons.Filled.Key, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Rotate MCP token")
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(32.dp))
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        letterSpacing = 1.sp,
+    )
+}
+
+@Composable
+private fun StatusBanner(state: HostState) {
+    val statusColor by animateColorAsState(
+        targetValue = when (state.phase) {
+            HostPhase.RUNNING -> MaterialTheme.colorScheme.tertiary
+            HostPhase.STARTING, HostPhase.AUTH_REQUIRED -> MaterialTheme.colorScheme.primary
+            HostPhase.ERROR -> MaterialTheme.colorScheme.error
+            HostPhase.STOPPED -> MaterialTheme.colorScheme.outline
+        },
+        label = "statusColor",
+    )
+
+    val statusLabel = when (state.phase) {
+        HostPhase.RUNNING -> "Running"
+        HostPhase.STARTING -> "Starting…"
+        HostPhase.AUTH_REQUIRED -> "Sign-in required"
+        HostPhase.ERROR -> "Error"
+        HostPhase.STOPPED -> "Stopped"
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .clip(CircleShape)
+                    .background(statusColor),
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "The MCP URL is copied before ChatGPT opens. Paste it into the Server URL field.",
+                    statusLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                state.message?.let { msg ->
+                    Text(
+                        msg,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (state.pendingApprovals > 0) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Text(
+                        "${state.pendingApprovals}",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SetupStep(
+    icon: ImageVector,
+    title: String,
+    isComplete: Boolean,
+    completeText: String,
+    pendingText: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isComplete) {
+                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isComplete) 0.dp else 1.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = if (isComplete) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (isComplete) completeText else pendingText,
                     style = MaterialTheme.typography.bodySmall,
+                    color = if (isComplete) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-
-        if (approvals.isNotEmpty()) {
-            HorizontalDivider()
-            Text("Pending approvals", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            approvals.forEach { approval ->
-                ApprovalCard(approval, onApproveOnce, onApproveSession, onDeny)
+            if (isComplete) {
+                Icon(
+                    Icons.Filled.CheckCircle,
+                    contentDescription = "Complete",
+                    modifier = Modifier.size(22.dp),
+                    tint = MaterialTheme.colorScheme.tertiary,
+                )
+            } else {
+                OutlinedButton(onClick = onAction) {
+                    Text(actionLabel, maxLines = 1)
+                }
             }
         }
-
-        HorizontalDivider()
-        Text("Security", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(
-            "All registered MCP tools run immediately without local approval. Protected apps, password fields, " +
-                "workspace boundaries, dangerous shell syntax, and unregistered risk 4 operations remain blocked. " +
-                "Rotating the token immediately invalidates the URL and stops hosting.",
-        )
-        OutlinedButton(onClick = onRotateToken) { Text("Rotate MCP token") }
-        Spacer(Modifier.height(24.dp))
     }
 }
 
 @Composable
-private fun StatusCard(state: HostState) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Status: ${state.phase.name}", fontWeight = FontWeight.Bold)
-            state.message?.let { Text(it) }
-            if (state.pendingApprovals > 0) Text("${state.pendingApprovals} approval(s) waiting on this phone")
-        }
-    }
-}
-
-@Composable
-private fun SetupCard(
-    number: String,
+private fun ActionCard(
+    icon: ImageVector,
     title: String,
     description: String,
-    content: @Composable () -> Unit,
+    actions: @Composable () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("$number. $title", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(description)
-            content()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(22.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(title, style = MaterialTheme.typography.titleMedium)
+            }
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                actions()
+            }
         }
     }
 }
@@ -309,14 +557,53 @@ private fun ApprovalCard(
     onApproveSession: (String) -> Unit,
     onDeny: (String) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(approval.toolName, fontWeight = FontWeight.Bold)
-            Text("Risk ${approval.risk.value} · ${approval.inputSummary}")
+    val riskColor = when {
+        approval.risk.value >= 3 -> MaterialTheme.colorScheme.error
+        approval.risk.value == 2 -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.tertiary
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(riskColor),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    approval.toolName,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = riskColor.copy(alpha = 0.12f),
+                ) {
+                    Text(
+                        "Risk ${approval.risk.value}",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = riskColor,
+                    )
+                }
+            }
+            Text(
+                approval.inputSummary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { onApproveOnce(approval.id) }) { Text("Allow once") }
                 if (approval.risk.value <= 2) {
-                    OutlinedButton(onClick = { onApproveSession(approval.id) }) { Text("Session") }
+                    FilledTonalButton(onClick = { onApproveSession(approval.id) }) { Text("Session") }
                 }
                 OutlinedButton(onClick = { onDeny(approval.id) }) { Text("Deny") }
             }
