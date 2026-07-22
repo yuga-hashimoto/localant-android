@@ -85,6 +85,14 @@ func TestInitializeNegotiatesVersionAndCreatesSession(t *testing.T) {
 	if result["protocolVersion"] != "2025-06-18" {
 		t.Fatalf("protocolVersion=%v", result["protocolVersion"])
 	}
+	serverInfo := result["serverInfo"].(map[string]any)
+	if serverInfo["version"] != "0.1.7" {
+		t.Fatalf("serverInfo=%v", serverInfo)
+	}
+	instructions := result["instructions"].(string)
+	if strings.Contains(instructions, "APPROVAL_REQUIRED") || !strings.Contains(instructions, "without local approval") {
+		t.Fatalf("instructions=%q", instructions)
+	}
 }
 
 func TestInitializeFallsBackToLatestSupportedVersion(t *testing.T) {
@@ -147,6 +155,71 @@ func TestToolsCallForwardsArgumentsAndSession(t *testing.T) {
 	structured := result["structuredContent"].(map[string]any)
 	if structured["status"] != "ok" {
 		t.Fatalf("structured=%v", structured)
+	}
+}
+
+func TestToolsCallReturnsMCPImageContentBlock(t *testing.T) {
+	host := &fakeHost{result: `{"success":true,"content":{"mimeType":"image/png","width":10,"height":20},"contentBlocks":[{"type":"image","data":"iVBORw0KGgo=","mimeType":"image/png"}]}`}
+	h := newMCPServer(host, "abcdefghijklmnopqrstuvwxyz012345", serverOptions{rand: bytes.NewReader(make([]byte, 48))})
+	session := initialize(t, h)
+	res := post(t, h, `{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"device_screenshot","arguments":{}}}`, session, latestProtocol)
+
+	var body map[string]any
+	decodeJSON(t, res, &body)
+	result := body["result"].(map[string]any)
+	content := result["content"].([]any)
+	image := content[0].(map[string]any)
+	if image["type"] != "image" || image["data"] != "iVBORw0KGgo=" || image["mimeType"] != "image/png" {
+		t.Fatalf("image content=%v", image)
+	}
+	structured := result["structuredContent"].(map[string]any)
+	if _, exists := structured["data"]; exists {
+		t.Fatalf("structured content must not duplicate image data: %v", structured)
+	}
+	if structured["width"] != float64(10) || structured["height"] != float64(20) {
+		t.Fatalf("structured=%v", structured)
+	}
+}
+
+func TestNormalizeHostContentBlocksSupportsTextAndResourceLink(t *testing.T) {
+	blocks, err := normalizeHostContentBlocks([]json.RawMessage{
+		json.RawMessage(`{"type":"text","text":"ready"}`),
+		json.RawMessage(`{"type":"resource_link","uri":"file:///screen.png","name":"screen.png","mimeType":"image/png","description":"Latest Android screen"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blocks[0]["type"] != "text" || blocks[0]["text"] != "ready" {
+		t.Fatalf("text=%v", blocks[0])
+	}
+	if blocks[1]["type"] != "resource_link" || blocks[1]["uri"] != "file:///screen.png" || blocks[1]["name"] != "screen.png" {
+		t.Fatalf("resource=%v", blocks[1])
+	}
+}
+
+func TestToolsCallRejectsUnsafeImageMIME(t *testing.T) {
+	host := &fakeHost{result: `{"success":true,"content":{"mimeType":"image/svg+xml"},"contentBlocks":[{"type":"image","data":"PHN2Zz48L3N2Zz4=","mimeType":"image/svg+xml"}]}`}
+	h := newMCPServer(host, "abcdefghijklmnopqrstuvwxyz012345", serverOptions{rand: bytes.NewReader(make([]byte, 48))})
+	session := initialize(t, h)
+	res := post(t, h, `{"jsonrpc":"2.0","id":33,"method":"tools/call","params":{"name":"device_screenshot","arguments":{}}}`, session, latestProtocol)
+
+	var body map[string]any
+	decodeJSON(t, res, &body)
+	if body["error"].(map[string]any)["code"] != float64(-32603) {
+		t.Fatalf("response=%v", body)
+	}
+}
+
+func TestToolsCallRejectsMalformedHostImageContent(t *testing.T) {
+	host := &fakeHost{result: `{"success":true,"content":{"mimeType":"image/png"},"contentBlocks":[{"type":"image","data":"not-base64","mimeType":"image/png"}]}`}
+	h := newMCPServer(host, "abcdefghijklmnopqrstuvwxyz012345", serverOptions{rand: bytes.NewReader(make([]byte, 48))})
+	session := initialize(t, h)
+	res := post(t, h, `{"jsonrpc":"2.0","id":32,"method":"tools/call","params":{"name":"device_screenshot","arguments":{}}}`, session, latestProtocol)
+
+	var body map[string]any
+	decodeJSON(t, res, &body)
+	if body["error"].(map[string]any)["code"] != float64(-32603) {
+		t.Fatalf("response=%v", body)
 	}
 }
 

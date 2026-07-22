@@ -9,6 +9,7 @@ import dev.localant.android.approval.InMemoryApprovalRepository
 import dev.localant.android.audit.InMemoryAuditRepository
 import dev.localant.android.bridge.FakeNativeBridge
 import dev.localant.android.bridge.NativeBridgeConfig
+import dev.localant.android.core.model.ToolContent
 import dev.localant.android.core.model.ToolResult
 import dev.localant.android.core.tools.SecureToolExecutor
 import dev.localant.android.core.tools.ToolHost
@@ -55,7 +56,12 @@ class ApprovalFreeBridgeIntegrationTest {
                 ToolHost(registry, executor),
             )
 
-            assertTrue(bridge.executeForTest("device_screenshot", "{}", "session") is ToolResult.Success)
+            val screenshot = bridge.executeForTest("device_screenshot", "{}", "session")
+            assertTrue(screenshot is ToolResult.Success)
+            assertEquals(
+                listOf(ToolContent.Image(data = "iVBORw0KGgo=", mimeType = "image/png")),
+                (screenshot as ToolResult.Success).contentBlocks,
+            )
             assertTrue(
                 bridge.executeForTest(
                     "device_tap",
@@ -89,7 +95,8 @@ class ApprovalFreeBridgeIntegrationTest {
             nodes = emptyList(),
             truncated = false,
         )
-        override suspend fun screenshot(): ScreenshotPayload = ScreenshotPayload("image/png", "AA", 1, 1)
+        override suspend fun screenshot(): ScreenshotPayload =
+            ScreenshotPayload("image/png", "iVBORw0KGgo=", 1, 1)
         override suspend fun clickNode(nodeId: String): Boolean = true
         override suspend fun tap(x: Float, y: Float, durationMs: Long): Boolean = true
         override suspend fun swipe(

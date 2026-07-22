@@ -1,6 +1,7 @@
 package nativebridge
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
@@ -17,14 +18,16 @@ import (
 )
 
 const (
-	mcpPath          = "/mcp"
-	healthPath       = "/healthz"
-	maxRequestBytes  = 1 << 20
-	defaultRateLimit = 120
-	defaultRateBurst = 30
-	latestProtocol   = "2025-11-25"
-	maxSessions      = 1024
-	sessionTTL       = 24 * time.Hour
+	mcpPath              = "/mcp"
+	healthPath           = "/healthz"
+	maxRequestBytes      = 1 << 20
+	defaultRateLimit     = 120
+	defaultRateBurst     = 30
+	latestProtocol       = "2025-11-25"
+	maxSessions          = 1024
+	sessionTTL           = 24 * time.Hour
+	maxMCPContentBlocks  = 16
+	maxImageContentBytes = 4 << 20
 )
 
 var supportedProtocols = map[string]struct{}{
@@ -249,9 +252,9 @@ func (s *mcpServer) handleInitialize(w http.ResponseWriter, req rpcRequest) {
 		},
 		"serverInfo": map[string]any{
 			"name":    "LocalAnt Android",
-			"version": "0.1.0",
+			"version": "0.1.7",
 		},
-		"instructions": "Android operations are executed locally. Sensitive tools may return APPROVAL_REQUIRED; approve the request on the phone and retry with the supplied _approvalId.",
+		"instructions": "Android operations are executed locally. All registered tools run immediately without local approval. Screenshot results are returned as MCP image content.",
 	}))
 }
 
@@ -323,9 +326,16 @@ func (s *mcpServer) handleToolsCall(w http.ResponseWriter, req rpcRequest, sessi
 		return
 	}
 	if result.Success {
-		text := rawJSONText(result.Content)
+		content, contentError := normalizeHostContentBlocks(result.ContentBlocks)
+		if contentError != nil {
+			writeJSONRPC(w, http.StatusOK, rpcError(req.ID, -32603, "host returned invalid MCP content", nil))
+			return
+		}
+		if len(content) == 0 {
+			content = []map[string]any{{"type": "text", "text": rawJSONText(result.Content)}}
+		}
 		response := map[string]any{
-			"content": []map[string]any{{"type": "text", "text": text}},
+			"content": content,
 			"isError": false,
 		}
 		var structured map[string]any
@@ -375,11 +385,120 @@ type rpcErrorObject struct {
 }
 
 type hostResult struct {
-	Success bool            `json:"success"`
-	Content json.RawMessage `json:"content,omitempty"`
-	Code    string          `json:"code,omitempty"`
-	Message string          `json:"message,omitempty"`
-	Details json.RawMessage `json:"details,omitempty"`
+	Success       bool              `json:"success"`
+	Content       json.RawMessage   `json:"content,omitempty"`
+	ContentBlocks []json.RawMessage `json:"contentBlocks,omitempty"`
+	Code          string            `json:"code,omitempty"`
+	Message       string            `json:"message,omitempty"`
+	Details       json.RawMessage   `json:"details,omitempty"`
+}
+
+type hostContentBlock struct {
+	Type        string `json:"type"`
+	Text        string `json:"text,omitempty"`
+	Data        string `json:"data,omitempty"`
+	MIMEType    string `json:"mimeType,omitempty"`
+	URI         string `json:"uri,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+func normalizeHostContentBlocks(rawBlocks []json.RawMessage) ([]map[string]any, error) {
+	if len(rawBlocks) > maxMCPContentBlocks {
+		return nil, fmt.Errorf("too many MCP content blocks: %d", len(rawBlocks))
+	}
+	blocks := make([]map[string]any, 0, len(rawBlocks))
+	for _, raw := range rawBlocks {
+		var block hostContentBlock
+		if err := json.Unmarshal(raw, &block); err != nil {
+			return nil, fmt.Errorf("invalid MCP content block: %w", err)
+		}
+		switch block.Type {
+		case "text":
+			blocks = append(blocks, map[string]any{
+				"type": "text",
+				"text": block.Text,
+			})
+		case "image":
+			decoded, err := decodeImageContent(block.Data)
+			if err != nil {
+				return nil, err
+			}
+			mimeType := strings.ToLower(strings.TrimSpace(block.MIMEType))
+			if !isAllowedImageMIME(mimeType) {
+				return nil, fmt.Errorf("unsupported image MIME type %q", block.MIMEType)
+			}
+			if !matchesImageMIME(decoded, mimeType) {
+				return nil, fmt.Errorf("image data does not match MIME type %q", mimeType)
+			}
+			blocks = append(blocks, map[string]any{
+				"type":     "image",
+				"data":     base64.StdEncoding.EncodeToString(decoded),
+				"mimeType": mimeType,
+			})
+		case "resource_link":
+			resourceURI, err := url.Parse(block.URI)
+			if err != nil || resourceURI.Scheme == "" || strings.TrimSpace(block.Name) == "" {
+				return nil, fmt.Errorf("invalid resource link")
+			}
+			resource := map[string]any{
+				"type": "resource_link",
+				"uri":  block.URI,
+				"name": block.Name,
+			}
+			if block.MIMEType != "" {
+				resource["mimeType"] = block.MIMEType
+			}
+			if block.Description != "" {
+				resource["description"] = block.Description
+			}
+			blocks = append(blocks, resource)
+		default:
+			return nil, fmt.Errorf("unsupported MCP content block type %q", block.Type)
+		}
+	}
+	return blocks, nil
+}
+
+func decodeImageContent(data string) ([]byte, error) {
+	if data == "" {
+		return nil, fmt.Errorf("image content is empty")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		decoded, err = base64.RawStdEncoding.DecodeString(data)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("invalid image base64: %w", err)
+	}
+	if len(decoded) == 0 || len(decoded) > maxImageContentBytes {
+		return nil, fmt.Errorf("image content size %d is outside the allowed range", len(decoded))
+	}
+	return decoded, nil
+}
+
+func isAllowedImageMIME(mimeType string) bool {
+	switch mimeType {
+	case "image/png", "image/jpeg", "image/webp", "image/gif":
+		return true
+	default:
+		return false
+	}
+}
+
+func matchesImageMIME(data []byte, mimeType string) bool {
+	switch mimeType {
+	case "image/png":
+		return bytes.HasPrefix(data, []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
+	case "image/jpeg":
+		return bytes.HasPrefix(data, []byte{0xff, 0xd8, 0xff})
+	case "image/webp":
+		return len(data) >= 12 && bytes.Equal(data[:4], []byte("RIFF")) && bytes.Equal(data[8:12], []byte("WEBP"))
+	case "image/gif":
+		return bytes.HasPrefix(data, []byte("GIF87a")) || bytes.HasPrefix(data, []byte("GIF89a"))
+	default:
+		return false
+	}
 }
 
 func rpcResult(id json.RawMessage, result any) rpcResponse {

@@ -27,8 +27,8 @@ android {
         applicationId = "dev.localant.android"
         minSdk = 30
         targetSdk = 36
-        versionCode = providers.environmentVariable("LOCALANT_VERSION_CODE").orNull?.toIntOrNull() ?: 7
-        versionName = providers.environmentVariable("LOCALANT_VERSION_NAME").orNull ?: "0.1.6"
+        versionCode = providers.environmentVariable("LOCALANT_VERSION_CODE").orNull?.toIntOrNull() ?: 8
+        versionName = providers.environmentVariable("LOCALANT_VERSION_NAME").orNull ?: "0.1.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("boolean", "NATIVE_TSNET_ENABLED", buildTsnetBridge.toString())

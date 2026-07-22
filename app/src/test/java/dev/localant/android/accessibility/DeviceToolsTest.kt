@@ -1,5 +1,6 @@
 package dev.localant.android.accessibility
 
+import dev.localant.android.core.model.ToolContent
 import dev.localant.android.core.model.ToolContext
 import dev.localant.android.core.model.ToolResult
 import dev.localant.android.core.tools.ToolRegistry
@@ -63,6 +64,50 @@ class DeviceToolsTest {
     }
 
     @Test
+    fun screenshot_returnsImageContentBlockAndMetadataWithoutEmbeddedBase64() = runTest {
+        val registry = ToolRegistry()
+        DeviceTools.register(registry, FakeGateway())
+
+        val result = registry.execute("device_screenshot", buildJsonObject {}, ToolContext("s1"))
+
+        assertTrue(result is ToolResult.Success)
+        val success = result as ToolResult.Success
+        val metadata = success.content.jsonObject
+        assertEquals("image/png", metadata.getValue("mimeType").jsonPrimitive.content)
+        assertEquals("10", metadata.getValue("width").jsonPrimitive.content)
+        assertEquals("20", metadata.getValue("height").jsonPrimitive.content)
+        assertFalse(metadata.containsKey("data"))
+        assertEquals(listOf(ToolContent.Image(data = "iVBORw0KGgo=", mimeType = "image/png")), success.contentBlocks)
+    }
+
+    @Test
+    fun clickNodeAndInputText_forwardToGateway() = runTest {
+        val gateway = FakeGateway()
+        val registry = ToolRegistry()
+        DeviceTools.register(registry, gateway)
+
+        val click = registry.execute(
+            "device_click_node",
+            buildJsonObject { put("nodeId", "node_0001") },
+            ToolContext("s1"),
+        )
+        val input = registry.execute(
+            "device_input_text",
+            buildJsonObject {
+                put("text", "LocalAnt test")
+                put("nodeId", "node_0002")
+            },
+            ToolContext("s1"),
+        )
+
+        assertTrue(click is ToolResult.Success)
+        assertTrue(input is ToolResult.Success)
+        assertEquals("node_0001", gateway.lastClickedNodeId)
+        assertEquals("LocalAnt test", gateway.lastInputText)
+        assertEquals("node_0002", gateway.lastInputNodeId)
+    }
+
+    @Test
     fun tap_validatesCoordinatesAndForwards() = runTest {
         val gateway = FakeGateway()
         val registry = ToolRegistry()
@@ -102,6 +147,9 @@ class DeviceToolsTest {
     ) : AccessibilityGateway {
         var lastTapX: Float? = null
         var lastTapY: Float? = null
+        var lastClickedNodeId: String? = null
+        var lastInputText: String? = null
+        var lastInputNodeId: String? = null
 
         private fun failIfNeeded() {
             failure?.let { throw it }
@@ -115,16 +163,23 @@ class DeviceToolsTest {
         }
         override suspend fun screenshot(): ScreenshotPayload {
             failIfNeeded()
-            return ScreenshotPayload("image/png", "AA", 10, 20)
+            return ScreenshotPayload("image/png", "iVBORw0KGgo=", 10, 20)
         }
-        override suspend fun clickNode(nodeId: String): Boolean = true
+        override suspend fun clickNode(nodeId: String): Boolean {
+            lastClickedNodeId = nodeId
+            return true
+        }
         override suspend fun tap(x: Float, y: Float, durationMs: Long): Boolean {
             lastTapX = x
             lastTapY = y
             return true
         }
         override suspend fun swipe(x1: Float, y1: Float, x2: Float, y2: Float, durationMs: Long): Boolean = true
-        override suspend fun inputText(text: String, nodeId: String?): Boolean = true
+        override suspend fun inputText(text: String, nodeId: String?): Boolean {
+            lastInputText = text
+            lastInputNodeId = nodeId
+            return true
+        }
         override fun pressBack(): Boolean = true
         override fun pressHome(): Boolean = true
         override fun launchApp(packageName: String): Boolean = true

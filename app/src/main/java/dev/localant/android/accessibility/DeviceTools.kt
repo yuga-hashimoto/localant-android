@@ -1,6 +1,7 @@
 package dev.localant.android.accessibility
 
 import dev.localant.android.core.model.RiskLevel
+import dev.localant.android.core.model.ToolContent
 import dev.localant.android.core.model.ToolDefinition
 import dev.localant.android.core.model.ToolResult
 import dev.localant.android.core.tools.ToolHandler
@@ -69,12 +70,17 @@ object DeviceTools {
                 safeCall {
                     val screenshot = gateway.screenshot()
                     ToolResult.Success(
-                        buildJsonObject {
+                        content = buildJsonObject {
                             put("mimeType", screenshot.mimeType)
-                            put("data", screenshot.base64Data)
                             put("width", screenshot.width)
                             put("height", screenshot.height)
                         },
+                        contentBlocks = listOf(
+                            ToolContent.Image(
+                                data = screenshot.base64Data,
+                                mimeType = screenshot.mimeType,
+                            ),
+                        ),
                     )
                 }
             },
