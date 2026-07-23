@@ -1,5 +1,7 @@
 # LocalAnt Android
 
+> **Test PR** — This is a test pull request for verification purposes.
+
 LocalAnt Android turns one Android phone into a self-hosted MCP endpoint for ChatGPT. The phone runs the MCP server, Tailscale Funnel, a sandboxed app-UID shell workspace, audit storage, and Accessibility-based Android controls. No PC, VPS, or LocalAnt-operated relay is required at runtime.
 
 ## Capabilities
